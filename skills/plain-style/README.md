@@ -1,5 +1,9 @@
 # plain-style
 
+<!-- STATUS:START -->
+> 🔍 **Ready for Review** — complete and installable; looking for a second tester before it's called production-ready. Owner: @auwng. [What the statuses mean.](../../README.md#skill-status)
+<!-- STATUS:END -->
+
 A line-level revision pass for drafted text: cuts passive voice, filler words, redundant
 phrases, throat-clearing openers, vague language, comma-strung fragments, fragmented
 outlines standing in for real paragraphs, and em dashes, replacing each with direct,
@@ -9,7 +13,7 @@ Built to be used two ways: directly, on a file or pasted text, and as a subagent
 skills dispatch to from their own final drafting step, so the same eight rules apply
 consistently everywhere instead of getting redefined per skill.
 
-## Access
+## Install
 
 ```bash
 npx skills add snowpackdata/snowpack-ai-skills --skill plain-style
@@ -20,7 +24,7 @@ project) or just the current one -- global is the usual choice for a general-pur
 like this. Manual fallback, works regardless of install method:
 
 ```bash
-cp -r skills/review/plain-style ~/.claude/skills/
+cp -r skills/plain-style ~/.claude/skills/
 ```
 
 ## Usage

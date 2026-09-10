@@ -1,5 +1,9 @@
 # gather-context
 
+<!-- STATUS:START -->
+> 🔍 **Ready for Review** — complete and installable; looking for a second tester before it's called production-ready. Owner: @auwng. [What the statuses mean.](../../README.md#skill-status)
+<!-- STATUS:END -->
+
 Systematic context-gathering for an unfamiliar operational pipeline — parses what's
 declared/parseable, traces backward from downstream consumers to catch what nothing
 upstream declares, and turns everything else into a short, specific list of questions for
@@ -9,7 +13,7 @@ Consultants ramping up on an unfamiliar client pipeline can't get business and p
 context fast enough — gathering it today is ad hoc detective work. This exists to make
 that first pass fast, honest about what it actually checked vs. inferred, and repeatable.
 
-## Access
+## Install
 
 ```bash
 npx skills add snowpackdata/snowpack-ai-skills --skill gather-context
@@ -20,7 +24,7 @@ project) or just the current one — global is the usual choice for a general-pu
 like this. Manual fallback, works regardless of install method:
 
 ```bash
-cp -r skills/review/gather-context ~/.claude/skills/
+cp -r skills/gather-context ~/.claude/skills/
 ```
 
 ## Usage

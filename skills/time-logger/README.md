@@ -1,5 +1,9 @@
 # time-logger
 
+<!-- STATUS:START -->
+> ✅ **Production Ready** — used successfully in real work by someone besides the author, or by the author in production. Honor system. Owner: @jarellano01. [What the statuses mean.](../../README.md#skill-status)
+<!-- STATUS:END -->
+
 Reconstructs a workday from wherever you actually did the work — Slack, Google Calendar,
 Claude Code sessions, GitHub, and Granola meeting notes — into draft time entries, lets you
 review them on a local Morning Dashboard, and optionally submits the entries you confirm

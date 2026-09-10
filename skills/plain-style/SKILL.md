@@ -2,8 +2,9 @@
 name: plain-style
 description: Revise drafted text to eliminate passive voice, filler words, redundant phrases, throat-clearing openers, vague language, comma-strung fragments, fragmented outlines standing in for real paragraphs, and em dashes -- replacing each with direct, specific, flowing prose. Returns only the revised text, never a changelog of what was edited. Bundles a reusable `apply-style-guide` subagent other skills can dispatch to as a final drafting step, before their own output is considered finished. Triggers on "clean up the style of this", "make this more direct", "cut the filler from this", "apply the style guide", or when another skill's own instructions call for a style-enforcement pass before finalizing output.
 owner: "@auwng"
+status: review
 summary: Revises drafted prose to be direct, active, and free of filler. Use to tighten writing before it ships.
-notes: Owner @auwng. Ready for a second tester — promote to skills/production/ once someone besides the author has used it successfully.
+notes: Looking for a second tester.
 ---
 
 # Plain Style
@@ -36,7 +37,7 @@ if [ -n "$SKILL_DIR" ] && [ ! -f ~/.claude/agents/apply-style-guide.md ] && [ ! 
 fi
 ```
 
-If `$SKILL_DIR` is empty (a direct clone, running from `skills/review/plain-style/`
+If `$SKILL_DIR` is empty (a direct clone, running from `skills/plain-style/`
 itself), its own `.claude/agents/` is already project-local and discovered normally --
 skip the copy.
 
@@ -95,7 +96,7 @@ correctly present on disk. The fallback below exists specifically for this.
 npx skills add snowpackdata/snowpack-ai-skills --skill plain-style
 ```
 
-Manual fallback (always works): `cp -r skills/review/plain-style ~/.claude/skills/`.
+Manual fallback (always works): `cp -r skills/plain-style ~/.claude/skills/`.
 
 Either way, the Step 0 bootstrap above handles installing the bundled
 `apply-style-guide` subagent to `~/.claude/agents/` the first time it's needed -- no

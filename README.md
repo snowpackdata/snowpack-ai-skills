@@ -13,8 +13,7 @@ Manual fallback, if you'd rather not use the installer:
 
 ```bash
 git clone https://github.com/snowpackdata/snowpack-ai-skills.git
-cp -r snowpack-ai-skills/skills/production/{skill-name} ~/.claude/skills/{skill-name}
-# or skills/review/{skill-name} — match wherever the skill lives below
+cp -r snowpack-ai-skills/skills/{skill-name} ~/.claude/skills/{skill-name}
 ```
 
 Some skills bundle Claude Code subagents (`.claude/agents/*.md`), which Claude Code
@@ -22,26 +21,27 @@ can't discover while they sit nested inside an installed skill folder. Those ski
 `SKILL.md` self-installs its subagents to the global `~/.claude/agents/` as a first
 step, so `npx skills add` still works normally. See each skill's own `SKILL.md`.
 
-## Production Ready
+## Skills
 
-Used successfully by someone besides the author, with a named owner.
+<!-- SKILLS-TABLE:START -->
+| Status | Skill | Description | Owner | Notes |
+|---|---|---|---|---|
+| ✅ Production Ready | [`time-logger`](./skills/time-logger) | /time-logger setup \| prefetch \| log \| submit \| morning \| summary — drafts daily time entries from your tools, with a local review dashboard. | @jarellano01 |  |
+| 🔍 Ready for Review | [`gather-context`](./skills/gather-context) | Systematically maps an unfamiliar pipeline's declared and tribal context. Use when onboarding onto or auditing a client pipeline. | @auwng | Looking for a second tester. |
+| 🔍 Ready for Review | [`plain-style`](./skills/plain-style) | Revises drafted prose to be direct, active, and free of filler. Use to tighten writing before it ships. | @auwng | Looking for a second tester. |
+<!-- SKILLS-TABLE:END -->
 
-<!-- SKILLS-TABLE:PRODUCTION:START -->
-| Skill | Description | Owner |
-|---|---|---|
-| [`time-logger`](./skills/production/time-logger) | /time-logger setup \| prefetch \| log \| submit \| morning \| summary — drafts daily time entries from your tools, with a local review dashboard. | @jarellano01 |
-<!-- SKILLS-TABLE:PRODUCTION:END -->
+## Skill status
 
-## Ready for Review
+Skills are published early so people can try them. The status at the top of each
+skill's README says how much to trust it:
 
-Complete and installable, still looking for a second tester.
-
-<!-- SKILLS-TABLE:REVIEW:START -->
-| Skill | Description | Notes |
-|---|---|---|
-| [`gather-context`](./skills/review/gather-context) | Systematically maps an unfamiliar pipeline's declared and tribal context. Use when onboarding onto or auditing a client pipeline. | Owner @auwng. Ready for a second tester — promote to skills/production/ once someone besides the author has used it successfully. |
-| [`plain-style`](./skills/review/plain-style) | Revises drafted prose to be direct, active, and free of filler. Use to tighten writing before it ships. | Owner @auwng. Ready for a second tester — promote to skills/production/ once someone besides the author has used it successfully. |
-<!-- SKILLS-TABLE:REVIEW:END -->
+<!-- STATUS-LEGEND:START -->
+- ✅ **Production Ready** — used successfully in real work by someone besides the author, or by the author in production. Honor system.
+- 🔍 **Ready for Review** — complete and installable; looking for a second tester before it's called production-ready.
+- 🧪 **In Development** — works for the author; nobody else has tested it yet. Expect rough edges.
+- 📦 **Archived** — retired to `archive/{name}/`; no longer installable.
+<!-- STATUS-LEGEND:END -->
 
 ## About this repository
 

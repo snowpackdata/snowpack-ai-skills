@@ -3,6 +3,7 @@ name: time-logger
 description: Slash-command time logger. Run /time-logger setup, prefetch [date], log [date], submit [date], status, morning, refresh [section], feedback, summary [focus] (standup is an alias), dashboard [build|install|start|open], or /time-logger followed by any free-form question about your time, sources, or dashboard state. Builds a daily context file from Slack, Google Calendar, Claude Code sessions, GitHub, and Granola, drafts time entries from it, reviews them on a local Morning Dashboard, and on request submits them wherever this machine's submit instructions point (Cronos, a synced folder, etc.).
 summary: "/time-logger setup | prefetch | log | submit | morning | summary — drafts daily time entries from your tools, with a local review dashboard."
 owner: "@jarellano01"
+status: production
 argument-hint: "setup | prefetch [date] | log [date] | submit [date] | status | morning | refresh [section] | feedback | summary [focus] | dashboard [build|install|start|open] | <any question>"
 disable-model-invocation: true
 ---
@@ -49,7 +50,7 @@ name (meaning the most recent one, e.g. `friday`).
 
 ## Bootstrap (runs automatically on every invocation)
 
-!`for c in "$HOME/.claude/skills/time-logger" ".claude/skills/time-logger" "skills/production/time-logger" "."; do if [ -f "$c/scripts/bootstrap.sh" ] && grep -q '^name: time-logger$' "$c/SKILL.md" 2>/dev/null; then bash "$c/scripts/bootstrap.sh" "$(cd "$c" && pwd -P)"; exit 0; fi; done; echo "skill_dir: NOT FOUND — subagents were not (re)installed; see Troubleshooting"`
+!`for c in "$HOME/.claude/skills/time-logger" ".claude/skills/time-logger" "skills/time-logger" "."; do if [ -f "$c/scripts/bootstrap.sh" ] && grep -q '^name: time-logger$' "$c/SKILL.md" 2>/dev/null; then bash "$c/scripts/bootstrap.sh" "$(cd "$c" && pwd -P)"; exit 0; fi; done; echo "skill_dir: NOT FOUND — subagents were not (re)installed; see Troubleshooting"`
 
 The block above ran `scripts/bootstrap.sh` before you read this. It: resolves the data home
 and creates its tree; migrates data once from the old fixed location (`~/repos/time_logs/`)
@@ -204,7 +205,7 @@ standup", "that's client X", "never log the all-hands" — append it to
 - **`skill_dir: NOT FOUND`** — the bootstrap couldn't locate the skill's own files, so it
   couldn't (re)install the subagents. Expected locations are `~/.claude/skills/time-logger`
   (npx install) or `.claude/skills/time-logger` (project install). If you cloned the repo,
-  run the skill from the repo root so `skills/production/time-logger` resolves.
+  run the skill from the repo root so `skills/time-logger` resolves.
 - **`agents installed: N/6` with N < 6** — a prior copy failed; re-run any subcommand
   after fixing the location above.
 - **`schema outdated`** — `capabilities.yml` predates the `client:` / `dashboard:` sections.
