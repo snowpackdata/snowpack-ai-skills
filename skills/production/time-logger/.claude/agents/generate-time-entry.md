@@ -125,13 +125,22 @@ capture the generation but NOT the reading/understanding time, which is real log
 - Interactive analysis or confirmation of an automated job's *output* IS real work
 
 **Time rules:**
-- Snap all times to 15-minute boundaries (:00, :15, :30, :45)
-- No overlapping blocks in the final output — if Claude sessions ran in parallel/overlapping,
-  keep each as a separate entry at its full effort-based duration (don't merge or shrink them),
-  then sequence them back-to-back non-overlappingly, preserving durations and total hours
-- Max 2h per entry; split naturally if longer
-- Target 8h total, up to 10h — don't underclock heavy sessions
-- Place meetings at fixed calendar times first; fill coding work into gaps
+- **Start every entry when the work actually started.** Use the session's first-activity time,
+  the meeting's calendar time, or the first Slack message of a thread — snapped to the nearest
+  15 minutes (:00, :15, :30, :45). Never move an entry to make room for another one.
+- **Duration stays effort-based** (the table above), not the session's wall-clock span. An
+  entry runs from its real start for its effort-based duration.
+- **Overlap is fine.** Parallel sessions, a meeting during a coding session, two clients in
+  the same hour — each is its own entry at its own real start time, and their ranges may
+  overlap. Do not sequence, shift, shrink, or merge entries to avoid overlap, and do not
+  fill gaps. The billing system accepts overlapping entries; the dashboard draws them in lanes.
+- The `**Hours**` header is the sum of entry durations (what gets billed) and may exceed the
+  wall-clock span; also write `**Span**` as the first start to the last end.
+- Max 2h per entry; a long session splits at natural task breakpoints, each piece starting
+  where that piece actually began.
+- No daily hours target — the real starts and effort table decide the total. Standing
+  corrections in the "Time estimation adjustments" section of `user-preferences.md` override
+  the effort table; the user tunes it there as they see misses.
 
 **Continuity:**
 - Read the prior day file for open items and WIP context
@@ -146,7 +155,8 @@ format (the dashboard renderer and `/time-logger submit` both parse it):
 
 ```markdown
 # Time Entries — [Weekday], [Month Day], [Year]
-**Hours**: [sum of all entry durations]
+**Hours**: [sum of all entry durations — may exceed the wall-clock span when entries overlap]
+**Span**: [first entry start – last entry end, e.g. "7:30 AM – 6:00 PM"]
 **Clients**: [per-client hours, e.g. "Snowpack 4h · Grindr 2.5h · BGC 1.5h · Hotlap 0.5h"]
 **Tickets**: [ticket IDs, or "none"]
 **Repos**: [repo names, backtick-wrapped, or "none"]

@@ -12,8 +12,11 @@ connected in this Claude Code session — say so and stop. The result gives the 
 
 ## Already submitted?
 
-Call `list_time_entries` for the date. Any eligible entry that overlaps an existing Cronos
-entry (same time window, or same description) is marked `already logged` and excluded.
+Call `list_time_entries` for the date. An eligible entry is `already logged` — and excluded —
+when an existing Cronos entry has the same description, or the same start time **and** the
+same billing code. Overlapping time alone is not a duplicate: entries legitimately overlap
+(parallel sessions, a meeting inside a coding block), so a different scope in the same
+window is still new.
 
 ## Mapping
 

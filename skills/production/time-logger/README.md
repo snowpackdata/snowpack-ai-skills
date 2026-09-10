@@ -55,8 +55,9 @@ appended to `user-preferences.md` in the data home so you never repeat them.
    parallel. Adding a new integration is a new `fetch-*-day` agent writing to a new
    `raw/{source}/` directory — nothing else changes.
 2. **Log** — `generate-time-entry` discovers whatever `raw/*/YYYY-MM-DD.md` exists and
-   writes `time_logs/time_entries_YYYYMMDD.md`: 15-minute-snapped blocks with plain-prose
-   descriptions, explicit review time for artifacts a session produced, one scope per
+   writes `time_logs/time_entries_YYYYMMDD.md`: entries at their real start times (snapped to
+   15 minutes) with effort-based durations — overlap is allowed and drawn in lanes — with
+   plain-prose descriptions, explicit review time for artifacts a session produced, one scope per
    entry. Rerunning a date **merges** with the existing file so your corrections survive.
    A combined file (every raw source + a Recommended Time Log Structure) is built alongside
    it, optionally uploaded to a notes API.

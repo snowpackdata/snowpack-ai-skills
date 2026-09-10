@@ -817,7 +817,8 @@ function TimeEntriesPage({ section, uploads, pending, submit, remove }) {
                 </button>
                 <span className="spacer" />
                 {day.updated_at && <span className="small dim" title={new Date(day.updated_at).toLocaleString()}>drafted {ageLabel(day.updated_at)} ·</span>}
-                <span className="small dim">{day.hours}</span>
+                <span className="small dim num" title="Sum of entry durations (billable); entries may overlap">{day.hours}</span>
+                {day.span && <span className="small muted num" title="First start to last end">· {day.span}</span>}
               </div>
               <div className="meta-rows small">
                 {day.client_hours && Object.keys(day.client_hours).length > 0 && (

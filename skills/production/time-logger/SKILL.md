@@ -113,8 +113,8 @@ doing anything else, e.g. `Resolved "friday" → 2026-09-05`.
 1. Check which raw files exist: `ls <data home>/raw/*/YYYY-MM-DD.md` (ignore `combined/`).
 2. If none exist for the date, run **Prefetch** first and say so.
 3. Spawn `generate-time-entry` with the date. It reads every raw file present plus
-   `user-preferences.md`, applies the standing rules (15-minute snapping, effort-based
-   durations, artifact/document review time, one scope per entry, one `[client: Name]` tag
+   `user-preferences.md`, applies the standing rules (real start times snapped to 15 minutes, effort-based
+   durations, overlap allowed, artifact/document review time, one scope per entry, one `[client: Name]` tag
    per entry from the Orgs/Clients sections), **merges with an existing file for that date rather
    than overwriting it**, and writes `<data home>/time_logs/time_entries_YYYYMMDD.md`.
    If the agent reports `unknown`-tagged entries, tell the user which ones so they can add a

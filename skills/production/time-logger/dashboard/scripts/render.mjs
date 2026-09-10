@@ -77,7 +77,7 @@ function parseClient(heading) {
 
 function parseTimeEntries(md, date) {
   const header = {};
-  for (const [, key, val] of md.matchAll(/^\*\*(Hours|Clients|Tickets|Repos|PRs)\*\*:\s*(.+)$/gm)) {
+  for (const [, key, val] of md.matchAll(/^\*\*(Hours|Span|Clients|Tickets|Repos|PRs)\*\*:\s*(.+)$/gm)) {
     header[key.toLowerCase()] = val.trim();
   }
   const entries = [];

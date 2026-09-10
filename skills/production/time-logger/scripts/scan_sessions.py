@@ -16,7 +16,17 @@ from typing import Optional
 LOCAL_TZ = datetime.now().astimezone().tzinfo
 
 
+def utc_dates_for_local_day(target_date: str) -> set:
+    """UTC calendar dates that can contain any instant of the local target day."""
+    day = datetime.strptime(target_date, "%Y-%m-%d")
+    start = day.replace(tzinfo=LOCAL_TZ)
+    end = start + timedelta(days=1)
+    return {start.astimezone(timezone.utc).strftime("%Y-%m-%d"),
+            (end - timedelta(seconds=1)).astimezone(timezone.utc).strftime("%Y-%m-%d")}
+
+
 def scan_file(filepath: str, target_date: str) -> Optional[dict]:
+    utc_candidates = utc_dates_for_local_day(target_date)
     turns = 0
     first_ts = None
     last_ts = None
@@ -31,7 +41,19 @@ def scan_file(filepath: str, target_date: str) -> Optional[dict]:
                     continue
 
                 ts = obj.get("timestamp", "")
-                if not ts.startswith(target_date):
+                if not ts:
+                    continue
+                # Cheap prefilter on the UTC prefix (the local day spans two UTC dates), then
+                # decide by LOCAL date so evening work stays on the day it happened instead of
+                # sliding into the next file after 5 PM Pacific.
+                if ts[:10] not in utc_candidates:
+                    continue
+                try:
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                local_dt = dt.astimezone(LOCAL_TZ)
+                if local_dt.strftime("%Y-%m-%d") != target_date:
                     continue
 
                 t = obj.get("type")
@@ -39,14 +61,9 @@ def scan_file(filepath: str, target_date: str) -> Optional[dict]:
                     continue
 
                 turns += 1
-                try:
-                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                except ValueError:
-                    continue
-
                 if first_ts is None:
-                    first_ts = dt.astimezone(LOCAL_TZ)
-                last_ts = dt.astimezone(LOCAL_TZ)
+                    first_ts = local_dt
+                last_ts = local_dt
 
                 content = obj.get("message", {}).get("content", "")
                 text = ""
