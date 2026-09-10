@@ -1,0 +1,20 @@
+# Personal data lives in the data home (~/.local/share/time-logger/), never in this folder.
+# These patterns are a safety net in case anything writes to the old in-repo locations.
+raw/
+time_logs/
+capabilities.yml
+user-preferences.md
+
+# Dashboard build output — built into <data_home>/app/dashboard by scripts/dashboard-build.sh
+dashboard/node_modules/
+dashboard/dist/
+
+# Claude Code local settings (contains MCP UUIDs and session-specific permissions)
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store

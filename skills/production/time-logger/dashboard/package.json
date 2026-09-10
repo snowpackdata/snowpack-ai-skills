@@ -1,0 +1,25 @@
+{
+  "name": "time-logs-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "render": "node scripts/render.mjs",
+    "serve": "node server.mjs",
+    "start": "npm run render && npm run build && npm run serve"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tailwindcss": "^4.3.3",
+    "vite": "^6.0.0"
+  }
+}

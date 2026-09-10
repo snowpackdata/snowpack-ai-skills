@@ -1,0 +1,76 @@
+# time-logger capabilities
+# Generated and updated by `/time-logger setup`.
+# Lives at ~/.local/share/time-logger/capabilities.yml (the data home — override the
+# location with $TIME_LOGGER_DATA_HOME). Never commit this file anywhere.
+# Last configured: (not yet run)
+
+settings:
+  # Where all dynamic data lives: raw/, time_logs/, this file, user-preferences.md,
+  # the built dashboard app (app/), and dashboard/{data,feedback,logs}.
+  data_home: ~/.local/share/time-logger
+
+# Client-specific values. Everything that used to be hardcoded for one engagement lives here.
+client:
+  # The org this install logs time for — must match an entry in the Orgs section of
+  # user-preferences.md. Entries for other orgs stay in the log but are never submitted,
+  # never in standups, never in the digest.
+  org: ""
+  # Short id used in combined-file names and notes uploads, e.g. "snowpack". Blank = none.
+  slug: ""
+  # Display name for descriptions, e.g. "Snowpack Data".
+  name: ""
+  # Ticket-link base for the dashboard, e.g. https://acme.atlassian.net/browse/  Blank = plain text.
+  jira_browse_url: ""
+  # Slack channel ID whose latest posts set the standup house style. Blank = generic format.
+  standup_channel_id: ""
+
+integrations:
+  # Always available — reads Claude Code JSONL transcripts from ~/.claude/projects/ locally.
+  claude_sessions:
+    enabled: true
+
+  # Requires the Slack MCP connector in Claude Code.
+  slack:
+    enabled: false
+    user_id: ""  # Your Slack member ID, e.g. U01ABCDE123
+
+  # Requires the Google Calendar MCP connector in Claude Code.
+  google_calendar:
+    enabled: false
+
+  # Requires the gh CLI, authenticated via: gh auth login
+  github:
+    enabled: false
+    username: ""  # Auto-populated from gh auth status during setup
+
+  # Requires the Granola MCP connector in Claude Code.
+  granola:
+    enabled: false
+
+  # Optional: upload each day's combined file to a private notes API via a local wrapper
+  # script. Off unless you have one. The dashboard's per-day "uploaded" chips depend on it.
+  notes_api:
+    enabled: false
+    script: ~/.claude/skills/notes-api/notes.sh
+
+# Where /time-logger submit sends confirmed entries. The skill has no built-in destination:
+# after the org gate it reads this markdown file and follows it (create entries in a billing
+# system, drop a CSV into a synced Drive folder, ...). Setup copies a starting point from the
+# skill's submit-instructions.examples/ folder. Blank = submit is disabled on this machine.
+submit:
+  instructions: ~/.local/share/time-logger/submit-instructions.md
+
+# The local Morning Dashboard (bundled with the skill, built into <data_home>/app/dashboard).
+dashboard:
+  enabled: true
+  port: 4680
+  # Optional markdown todo list rendered on the Overview tab. Blank or missing = panel hidden.
+  # Format: `## State` sections (Pending / Done), `### Group` headings, then one item per line:
+  #   - [ ] [PROJ-123] Reply to Sam about the export **(HIGH)** #slack https://acme.slack.com/archives/C0/p1
+  # `[TICKET]` marks a Jira todo (kind: jira; links via client.jira_browse_url); anything else is
+  # kind: local. `#tags` are free-form (#slack, #pr, #reply, #research). Ticket IDs and links are
+  # what evidence attaches to: the dashboard shows time entries, PRs, and Slack messages that
+  # cite them as proof the todo was worked — nothing is closed until you comment "done".
+  todos_file: ~/.claude/todos.md
+  # Set to true by `/time-logger dashboard install` once the launchd jobs are loaded.
+  launchd: false
