@@ -34,7 +34,7 @@ Classify the question:
 
 A refresh, when accepted, is the **Log** flow for today (prefetch enabled sources, then
 `generate-time-entry`, which merges) followed by `node <data home>/app/dashboard/scripts/render.mjs`.
-Don't build the combined file or upload — that stays with `log` and `morning`.
+Don't build the combined file — that stays with `log` and `morning`.
 
 ## 3. Answer from the files
 

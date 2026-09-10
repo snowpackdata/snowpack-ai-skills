@@ -281,9 +281,6 @@ a.chip:hover, a.ticket:hover { text-decoration: underline; }
 .meta-rows > div { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
 .meta-rows > div > .muted:first-child { flex: 0 0 64px; font-size: 12px; }
 .meta-rows .chip { margin-right: 0; }
-.up-chip { font-size: 12px; width: 14px; text-align: center; }
-.up-chip.done { color: var(--good); }
-.up-chip.todo { color: var(--ink-muted); }
 .rev-chip { color: var(--good); display: inline-flex; }
 .rev-chip .ico { width: 13px; height: 13px; }
 .rev-btn { display: inline-flex; align-items: center; gap: 5px; background: none; border: 1px solid var(--hairline); border-radius: 999px; color: var(--ink-2); cursor: pointer; font-size: 12px; padding: 2px 10px; }

@@ -119,8 +119,8 @@ doing anything else, e.g. `Resolved "friday" → 2026-09-05`.
    than overwriting it**, and writes `<data home>/time_logs/time_entries_YYYYMMDD.md`.
    If the agent reports `unknown`-tagged entries, tell the user which ones so they can add a
    match rule to the Clients section.
-4. Build the day's combined file (raw sections + Recommended Time Log Structure), upload it if
-   the notes API is enabled, and sync the dashboard — follow
+4. Build the day's combined file (raw sections + Recommended Time Log Structure) and sync the
+   dashboard — follow
    [`references/combined-file.md`](./references/combined-file.md).
 5. Show the user the entries verbatim, followed by the agent's one-line summary. Make clear
    these are drafts — nothing has been logged. If the dashboard is served, point them to

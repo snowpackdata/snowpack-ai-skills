@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-const SECTIONS = ['config', 'digest', 'time_entries', 'todos', 'calendar', 'slack', 'slack_conversations', 'artifacts', 'github_prs', 'uploads', 'summaries'];
+const SECTIONS = ['config', 'digest', 'time_entries', 'todos', 'calendar', 'slack', 'slack_conversations', 'artifacts', 'github_prs', 'summaries'];
 // Client-specific values come from data/config.json (rendered from capabilities.yml by
 // render.mjs) — nothing is hardcoded in the built app. Updated in useStore when it loads.
-let CONFIG = { jira_browse_url: '', client_name: '', org: '', notes_api_enabled: false, orgs: {}, clients: {} };
+let CONFIG = { jira_browse_url: '', client_name: '', org: '', orgs: {}, clients: {} };
 
 // Client tags: everyone is a client under an org (Orgs/Clients sections of
 // user-preferences.md, rendered into config.json). Clients under the configured org
@@ -755,14 +755,12 @@ function Entry({ day, entry, pending, submit, remove }) {
   );
 }
 
-function TimeEntriesPage({ section, uploads, pending, submit, remove }) {
+function TimeEntriesPage({ section, pending, submit, remove }) {
   const days = section?.data?.days || [];
   const [sel, setSel] = useState(0);
   const day = days[sel];
   const unresolved = pending.filter((p) => !p.resolved && p.type === 'time_entry_comment');
   const countFor = (date) => unresolved.filter((p) => p.date === date).length;
-  const uploadedDates = new Set(uploads?.data?.dates || []);
-  const uploadsKnown = uploads?.status === 'ok';
   const { reviewed, toggle } = useReviewed();
   const reviewedDates = new Set(reviewed);
   const [revBusy, setRevBusy] = useState(false);
@@ -782,11 +780,6 @@ function TimeEntriesPage({ section, uploads, pending, submit, remove }) {
               <span className="spacer" />
               {reviewedDates.has(d.date) && <span className="rev-chip" title="Reviewed"><Icon name="check" /></span>}
               {countFor(d.date) > 0 && <span className="fb-count"><Icon name="comment" />{countFor(d.date)}</span>}
-              {uploadsKnown && (
-                uploadedDates.has(d.date)
-                  ? <span className="up-chip done" title="Uploaded to notes API"><Icon name="send" /></span>
-                  : <span className="up-chip todo" title="Not uploaded yet">·</span>
-              )}
               <span className="muted">{d.hours}</span>
             </button>
           ))}
@@ -804,11 +797,6 @@ function TimeEntriesPage({ section, uploads, pending, submit, remove }) {
             <div className="panel day-meta">
               <div className="panel-head">
                 <h2>{new Date(`${day.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
-                {uploadsKnown && (
-                  uploadedDates.has(day.date)
-                    ? <span className="badge fresh"><Icon name="send" />uploaded</span>
-                    : <span className="badge stale"><Icon name="alert" />not uploaded</span>
-                )}
                 <button
                   className={`rev-btn ${reviewedDates.has(day.date) ? 'on' : ''}`}
                   onClick={() => toggleReviewed(day.date)} disabled={revBusy}
@@ -962,7 +950,7 @@ export default function App() {
           )}
 
           {tab === 'time' && (
-            <TimeEntriesPage section={store.time_entries} uploads={store.uploads} pending={pending} submit={submit} remove={remove} />
+            <TimeEntriesPage section={store.time_entries} pending={pending} submit={submit} remove={remove} />
           )}
 
           {tab === 'prs' && (

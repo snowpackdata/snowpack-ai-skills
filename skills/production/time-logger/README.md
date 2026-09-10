@@ -60,7 +60,7 @@ appended to `user-preferences.md` in the data home so you never repeat them.
    plain-prose descriptions, explicit review time for artifacts a session produced, one scope per
    entry. Rerunning a date **merges** with the existing file so your corrections survive.
    A combined file (every raw source + a Recommended Time Log Structure) is built alongside
-   it, optionally uploaded to a notes API.
+   it. Nothing leaves the machine until `submit`.
 3. **Review** — the Morning Dashboard (sidebar nav; IBM Plex Sans for UI and prose, Plex Mono
    for numbers; dark) shows the week's entries on a timeline;
    comments you leave there queue for `/time-logger feedback`, which edits the markdown and
@@ -92,7 +92,6 @@ appended to `user-preferences.md` in the data home so you never repeat them.
 | Google Calendar | Google Calendar MCP connector in Claude Code |
 | Granola | Granola MCP connector in Claude Code |
 | Submit destination | Whatever your `submit-instructions.md` needs — e.g. the `snowpack-mcp` connector for Cronos, or a mounted sync folder |
-| Notes API (optional) | A local wrapper script; off by default |
 | Dashboard | Node 20+ (`node`, `npm`); launchd jobs are macOS-only |
 
 ## Safety notes
@@ -114,9 +113,8 @@ appended to `user-preferences.md` in the data home so you never repeat them.
   digest — work under any other org (personal projects, side clients) stays in the log and
   on the dashboard but never crosses over. The
   dashboard shows hours per org and per client. All of it stays in the local
-  data home; the optional notes-API upload is off by default and sends the whole combined
-  file for the configured client slug, raw sections included, so enable it only on a
-  single-client machine.
+  data home. The only step that sends anything anywhere is `submit`, and only through this
+  machine's submit instructions after you confirm a review table.
 - The bootstrap copies six agents into the global `~/.claude/agents/` by fixed names
   (`fetch-*-day`, `generate-time-entry`) and overwrites them on each run.
 - The launchd installer creates login items; it only runs when you say yes during setup or

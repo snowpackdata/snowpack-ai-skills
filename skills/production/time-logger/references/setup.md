@@ -38,9 +38,6 @@ Available if output contains "Logged in". Extract the username from the output.
 
 **Granola MCP** — call `list_meetings` with `time_range: last_30_days`. Available if no error.
 
-**Notes API** (optional upload of combined files) — available if the script named in
-`integrations.notes_api.script` exists and is executable.
-
 **Dashboard** — `node --version` and `npm --version`. Available if both print a version
 (Node 20+). Read the `dashboard:` line from the bootstrap output for build status.
 
@@ -55,7 +52,6 @@ slack             available    Slack MCP detected
 google_calendar   available    Google Calendar MCP detected
 github            available    authenticated as octocat
 granola           unavailable  Granola MCP not found
-notes_api         unavailable  ~/.claude/skills/notes-api/notes.sh not found
 dashboard         available    node v22.1.0 — built at ~/.local/share/time-logger/app/dashboard
 ```
 

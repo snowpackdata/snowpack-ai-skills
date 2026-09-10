@@ -28,8 +28,8 @@ Paths are relative to the data home (`~/.local/share/time-logger/`, or
    already commented on survive and new work since the last run is appended. This is what
    lets today's draft grow through the day and be commented on before the day ends. Also run
    `generate-time-entry` for any weekday this week that has raw data but no
-   `time_logs/time_entries_YYYYMMDD.md`. Skip the combined file and any upload here — those
-   belong to `log` and `morning`.
+   `time_logs/time_entries_YYYYMMDD.md`. Skip the combined file here — it belongs to `log` and
+   `morning`.
 
 2. **Digest** (section `digest` or `all`): run the `summary` flow with the focus
    `daily digest` — the preset in [`summary.md`](./summary.md) fixes scope, sections, client
@@ -59,10 +59,6 @@ Paths are relative to the data home (`~/.local/share/time-logger/`, or
    `node app/dashboard/scripts/fetch-github-prs.mjs` — a deterministic gh CLI script, no agent
    needed. It writes `data/github_prs.json` (all open authored PRs sorted most-neglected first,
    plus PRs closed in the last 7 days). Skip if `integrations.github.enabled` is false.
-
-   **Upload status** (sections `time_entries`, `github`, or `all`): also run
-   `node app/dashboard/scripts/fetch-uploads.mjs`. It writes `status: "disabled"` when
-   `integrations.notes_api.enabled` is false, which hides the upload chips in the UI.
 
 4. **Artifacts** (section `artifacts` or `all`): call the Artifact tool with
    `action: "list"`, `limit: 50`, and write `dashboard/data/artifacts.json`:

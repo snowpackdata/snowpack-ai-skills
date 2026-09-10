@@ -76,8 +76,8 @@ no outward-facing tools; `pr_comment` items always wait for an interactive run.
    those IDs from `pending.json`. Unapplied and ambiguous items stay pending.
 
 6. **Sync derived copies**: for each date whose time-entry file was edited, rebuild the
-   combined file's `## Recommended Time Log Structure` section and re-upload if the notes
-   API is enabled ([`combined-file.md`](./combined-file.md)). If the edits change
+   combined file's `## Recommended Time Log Structure` section
+   ([`combined-file.md`](./combined-file.md)). If the edits change
    hours or content the daily digest summarizes, re-run `summary daily digest` so today's
    `summaries/YYYY-MM-DD_daily-digest.md` reflects them.
 

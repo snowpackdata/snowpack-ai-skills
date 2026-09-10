@@ -50,11 +50,6 @@ ALLOWED=(
   "Bash(gh auth status*)" "Bash(gh api user*)" "Bash(gh search *)"
   "mcp__claude_ai_Slack" "mcp__plugin_slack_slack" "mcp__claude_ai_Google_Calendar" "mcp__claude_ai_Granola"
 )
-# The optional notes-API wrapper is the one outbound call we allow, and only when enabled.
-NOTES_ENABLED=$(node "$APP/scripts/capabilities.mjs" integrations.notes_api.enabled 2>/dev/null)
-NOTES_SCRIPT=$(node "$APP/scripts/capabilities.mjs" integrations.notes_api.script 2>/dev/null)
-NOTES_SCRIPT="${NOTES_SCRIPT/#\~/$HOME}"
-[[ "$NOTES_ENABLED" == "true" && -n "$NOTES_SCRIPT" ]] && ALLOWED+=("Bash($NOTES_SCRIPT upload *)")
 
 echo "$TODAY" > "$MARKER"
 log "morning run start for $TODAY"
@@ -64,9 +59,9 @@ cd "$APP"
 
 You are running with an explicit tool allowlist: file tools, subagents, node/python3 and basic read-only shell, read-only gh (auth status, api user, search), and the Slack/Calendar/Granola MCP tools. Anything else is denied — do not retry a denied tool, note it in the final summary and move on.
 
-1. Drain dashboard feedback per $SKILL_DIR/references/review-feedback.md — but apply ONLY time_entry_comment and todo_comment items. Leave every pr_comment item pending (they can require outward-facing GitHub actions), and take NO outward-facing action of any kind: no gh writes, no PR closes, no PR comments, no Slack messages, no Jira changes. Uploading combined files via the notes API wrapper (if integrations.notes_api.enabled is true in $DATA_HOME/capabilities.yml) is allowed — it is internal.
+1. Drain dashboard feedback per $SKILL_DIR/references/review-feedback.md — but apply ONLY time_entry_comment and todo_comment items. Leave every pr_comment item pending (they can require outward-facing GitHub actions), and take NO outward-facing action of any kind: no gh writes, no PR closes, no PR comments, no Slack messages, no Jira changes. Nothing leaves this machine in a headless run.
 2. Backfill: for each weekday from last Monday through yesterday missing $DATA_HOME/time_logs/time_entries_YYYYMMDD.md, fetch all enabled sources per $DATA_HOME/capabilities.yml (follow the $SKILL_DIR/.claude/agents/fetch-*-day.md instructions; spawn agents if available, otherwise perform the fetches directly), then run the generate flow per $SKILL_DIR/.claude/agents/generate-time-entry.md, and build the combined file per $SKILL_DIR/references/combined-file.md.
-3. Refresh: fetch today's Slack and Calendar into $DATA_HOME/raw/, write the daily digest by following $SKILL_DIR/references/summary.md with the focus 'daily digest' (its preset section) — it saves $DATA_HOME/summaries/${TODAY}_daily-digest.md and skips delivery, write $DATA_HOME/dashboard/data/slack_conversations.json per step 2b of $SKILL_DIR/references/dash-refresh.md, run node $APP/scripts/fetch-github-prs.mjs and node $APP/scripts/fetch-uploads.mjs, then node $APP/scripts/render.mjs. Skip the artifacts section (the Artifact tool is not in the allowlist). Do not run 'open'.
+3. Refresh: fetch today's Slack and Calendar into $DATA_HOME/raw/, write the daily digest by following $SKILL_DIR/references/summary.md with the focus 'daily digest' (its preset section) — it saves $DATA_HOME/summaries/${TODAY}_daily-digest.md and skips delivery, write $DATA_HOME/dashboard/data/slack_conversations.json per step 2b of $SKILL_DIR/references/dash-refresh.md, run node $APP/scripts/fetch-github-prs.mjs, then node $APP/scripts/render.mjs. Skip the artifacts section (the Artifact tool is not in the allowlist). Do not run 'open'.
 4. Final output: a short plain-text summary — days backfilled, feedback items applied/left pending, any source that failed, and any tool call that was denied." \
   --allowedTools "${ALLOWED[@]}" \
   --output-format text < /dev/null >> "$LOG" 2>&1

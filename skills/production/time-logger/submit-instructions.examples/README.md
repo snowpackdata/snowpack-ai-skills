@@ -13,7 +13,7 @@ and you edit it from there. Pick the closest:
 |---|---|
 | `cronos.md` | You have the `snowpack-mcp` connector and log time in Cronos |
 | `synced-folder.md` | No connector on this machine; the client picks up a file from a Google Drive / Dropbox / OneDrive folder that syncs locally |
-| `TEMPLATE.md` | Something else — the contract every instructions file must satisfy, with blanks |
+| `TEMPLATE.md` | Something else — the contract every instructions file must satisfy, with blanks. A private notes API, a client's own ticketing tool, an email to a manager: anything that counts as *sending* the day's time belongs here, wired up per machine |
 
 ## Contract
 

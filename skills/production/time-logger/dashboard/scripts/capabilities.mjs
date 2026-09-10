@@ -73,7 +73,6 @@ export function uiConfig() {
     client_slug: get('client.slug', ''),
     client_name: get('client.name', ''),
     jira_browse_url: get('client.jira_browse_url', ''),
-    notes_api_enabled: get('integrations.notes_api.enabled', false) === true,
     todos_file: expandHome(get('dashboard.todos_file', '')),
     port: Number(get('dashboard.port', 4680)),
   };

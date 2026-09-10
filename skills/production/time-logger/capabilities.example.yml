@@ -15,7 +15,7 @@ client:
   # user-preferences.md. Entries for other orgs stay in the log but are never submitted,
   # never in standups, never in the digest.
   org: ""
-  # Short id used in combined-file names and notes uploads, e.g. "snowpack". Blank = none.
+  # Short id used in combined-file names, e.g. "snowpack". Blank = none.
   slug: ""
   # Display name for descriptions, e.g. "Snowpack Data".
   name: ""
@@ -46,12 +46,6 @@ integrations:
   # Requires the Granola MCP connector in Claude Code.
   granola:
     enabled: false
-
-  # Optional: upload each day's combined file to a private notes API via a local wrapper
-  # script. Off unless you have one. The dashboard's per-day "uploaded" chips depend on it.
-  notes_api:
-    enabled: false
-    script: ~/.claude/skills/notes-api/notes.sh
 
 # Where /time-logger submit sends confirmed entries. The skill has no built-in destination:
 # after the org gate it reads this markdown file and follows it (create entries in a billing

@@ -95,7 +95,7 @@ standup on an unreviewed day.
 If any days are missing or possibly outdated, **tell the user first** — one line, e.g.
 "Mon was never fetched and Tue was fetched mid-day; refetching both before summarizing" —
 then run **Prefetch** for those days (parallel fetch agents), rebuild each combined file per
-[`combined-file.md`](./combined-file.md), and upload if the notes API is enabled. Prefetch is
+[`combined-file.md`](./combined-file.md). Prefetch is
 idempotent — rerunning a day overwrites in place. Don't regenerate time entries here (standup
 only needs the data); carry any existing Recommended Time Log Structure section over, and
 mention that refetched days haven't been re-logged. Fresh time logs matter for these

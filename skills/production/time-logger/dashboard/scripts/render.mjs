@@ -351,7 +351,7 @@ async function main() {
   await writeJson(join(DATA, 'config.json'), { generated_at: NOW, status: 'ok', data: { ...CONFIG, ...CLIENT_MAP } });
   const meta = { rendered_at: NOW, sections: { config: NOW } };
   for (const [name, payload] of Object.entries(sections)) meta.sections[name] = payload.generated_at || NOW;
-  for (const name of ['artifacts', 'slack_conversations', 'github_prs', 'uploads']) {
+  for (const name of ['artifacts', 'slack_conversations', 'github_prs']) {
     meta.sections[name] = await readGeneratedAt(`${name}.json`);
   }
   await writeJson(join(DATA, 'meta.json'), meta);

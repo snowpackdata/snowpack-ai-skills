@@ -76,7 +76,6 @@ rc=$?
 log "claude fetch exit=$rc"
 
 node "$APP/scripts/fetch-github-prs.mjs" >> "$LOG" 2>&1 || log "WARN: github PR fetch failed"
-node "$APP/scripts/fetch-uploads.mjs" >> "$LOG" 2>&1 || log "WARN: uploads fetch failed"
 node "$APP/scripts/render.mjs" >> "$LOG" 2>&1
 log "render done"
 

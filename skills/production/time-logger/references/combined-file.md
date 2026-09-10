@@ -2,7 +2,7 @@
 
 Loaded on demand from `SKILL.md` by `/time-logger log` (and by `morning` / `standup` when they
 backfill). One file per day holds every raw source verbatim plus the settled summary of the
-generated entries, so anything downstream (a notes upload, a standup, a human skim) has one
+generated entries, so anything downstream (a summary, a submit, a human skim) has one
 place to look.
 
 Paths below are relative to the data home (`~/.local/share/time-logger/`, or
@@ -55,24 +55,14 @@ Rebuilding is idempotent: rerunning for a date overwrites the file. When rebuild
 refetch and the entries file hasn't changed, carry the existing Recommended Time Log Structure
 section over unchanged.
 
-## Upload (optional)
-
-Only when `integrations.notes_api.enabled` is `true` in `capabilities.yml`:
-
-```bash
-<integrations.notes_api.script> upload time-log <slug> ~/.local/share/time-logger/raw/combined/time-log_YYYY-MM-DD_<slug>.md YYYY-MM-DD
-```
-
-This upserts — re-running with the same date overwrites in place. Report the key the script
-prints. If the script is missing or fails, say so and continue; the upload is never a blocker.
+The combined file stays on this machine. Sending a day's time anywhere is `submit`'s job,
+through the machine's submit instructions, never a side effect of `log`.
 
 ## Sync the dashboard
 
-After building (and uploading, if enabled), refresh the store so the Slack/Calendar panels and
-the per-day upload chips reflect the new data:
+After building, refresh the store so the Slack/Calendar panels reflect the new data:
 
 ```bash
-node ~/.local/share/time-logger/app/dashboard/scripts/fetch-uploads.mjs
 node ~/.local/share/time-logger/app/dashboard/scripts/render.mjs
 ```
 
