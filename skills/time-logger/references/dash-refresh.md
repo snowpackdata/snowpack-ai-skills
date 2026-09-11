@@ -39,18 +39,35 @@ Paths are relative to the data home (`~/.local/share/time-logger/`, or
      work. If the date is **in the past**, only fetch sources with no existing
      `raw/{source}/YYYY-MM-DD.md` — a closed day's raw data doesn't need re-pulling (to force a
      redo, delete that file first).
-   - **Draft.** For `entries` or `all`, run `generate-time-entry` for the resolved date. It
-     merges with the existing draft, so entries the user already commented on survive and new
-     work since the last run is appended. This is what lets today's draft grow through the day
-     and be commented on before it ends.
+   - **Draft.** For `entries` or `all`, first check whether a draft is even needed:
+     ```bash
+     python3 <data home>/scripts/check_draft_freshness.py check <date>
+     ```
+     If `skip` is `true`, say so (one line, e.g. `draft: unchanged — skipped
+     generate-time-entry`) and move on — this is the common case for a same-day re-refresh
+     where nothing new has happened, or a re-run of an already-drafted past day, and it's what
+     keeps a repeat refresh cheap (skipping a ~5 min reasoning pass, not just the fetch side
+     the cache already covers). Otherwise run `generate-time-entry` for the resolved date as
+     before — it merges with the existing draft, so entries the user already commented on
+     survive and new work since the last run is appended — then record the new state:
+     ```bash
+     python3 <data home>/scripts/check_draft_freshness.py record <date>
+     ```
+     (Run `record` right after the agent writes, even though the fetch step may also have
+     touched raw files moments earlier — it re-hashes current state rather than reusing the
+     `check` call's hash, so it can't record against a slightly-stale snapshot.)
    - **Combined file.** For `entries` or `all`, build the day's combined file (raw sections +
      Recommended Time Log Structure) and sync the dashboard — follow
      [`combined-file.md`](./combined-file.md). This is pure file concatenation, no extra LLM
-     cost, so it always runs alongside the draft now.
+     cost, so it always runs alongside the draft now (including when the draft step above was
+     skipped — the combined file itself doesn't get this cache, it's cheap either way).
    - **Week backfill** — only when no explicit date was passed (i.e. this is a general
-     `refresh`/`refresh all`, not a `refresh entries <specific date>`): also run
-     `generate-time-entry` (draft only, no fetch) for any weekday this week that has raw data
-     but no `time_logs/time_entries_YYYYMMDD.md`.
+     `refresh`/`refresh all`, not a `refresh entries <specific date>`): for any weekday this
+     week that has raw data but no `time_logs/time_entries_YYYYMMDD.md`, run the same
+     freshness-gated draft step above (draft only, no fetch) — a date with no entries file yet
+     will always come back `skip: false` from the gate (see "no draft exists yet"), so this is
+     safe to run unconditionally; it's only a no-op for dates that already have a draft that's
+     still current.
    - If the agent reports `unknown`-tagged entries, tell the user which ones so they can add a
      match rule to the Clients section in `user-preferences.md`. Suggest `/time-logger submit
      <date>` if `submit.instructions` in `capabilities.yml` is set.
