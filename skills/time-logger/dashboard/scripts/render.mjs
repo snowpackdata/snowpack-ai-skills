@@ -85,19 +85,24 @@ function parseTimeEntries(md, date) {
   const blockRe = /^### (.+?)\n([\s\S]*?)(?=\n---|\n### |$)/gm;
   for (const [, rawHeading, body] of md.matchAll(blockRe)) {
     const client = parseClient(rawHeading);
+    const non_billable = /\[non-billable\]\s*$/i.test(rawHeading);
     // Strip client tags before parsing so "(Xh)" is found whether the tag precedes or follows it.
-    const heading = rawHeading.replace(/\s*\[client:[^\]]*\]/gi, '').replace(/\s*\[non-snowpack\]/gi, '').trim();
+    // Also strip [non-billable] here — it's a toggleable UI flag, not part of the entry's
+    // identity, so it must never appear in `heading` (the stable key comments/reviewed-state
+    // match on) or it would change every time the flag is flipped.
+    const heading = rawHeading.replace(/\s*\[client:[^\]]*\]/gi, '').replace(/\s*\[non-snowpack\]/gi, '').replace(/\s*\[non-billable\]\s*$/i, '').trim();
     const m = heading.match(/^(.+?)\s+—\s+(.+?)(?:\s+\(([\d.]+)h\))?$/);
     const time = m ? m[1].trim() : null;
     entries.push({
       letter: LETTERS[entries.length % 26].repeat(Math.floor(entries.length / 26) + 1),
       range: parseRange(time),
-      heading: rawHeading.trim(),
+      heading: rawHeading.replace(/\s*\[non-billable\]\s*$/i, '').trim(),
       time,
       title: m ? m[2].trim() : heading,
       hours: m && m[3] ? Number(m[3]) : null,
       is_meeting: /\[meeting\]/i.test(heading),
       client,
+      non_billable,
       body: body.trim(),
       tickets: [...new Set(body.match(/[A-Z]{2,}-\d+/g) || [])],
     });

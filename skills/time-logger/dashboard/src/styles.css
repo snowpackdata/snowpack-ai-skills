@@ -330,6 +330,15 @@ a.chip:hover, a.ticket:hover { text-decoration: underline; }
 .entry:hover .entry-review-btn, .entry-review-btn:focus-visible, .entry-review-btn.on { opacity: 1; }
 .entry-review-btn:hover { border-color: var(--ink-muted); }
 .entry-review-btn.on { color: var(--good); border-color: var(--good); background: var(--good-soft); }
+.entry-nonbillable-btn {
+  align-self: baseline; flex: 0 0 auto; opacity: 0; background: none; cursor: pointer;
+  border: 1px solid var(--hairline); border-radius: 999px; color: var(--ink-muted);
+  font-size: 11px; padding: 2px 8px;
+}
+.entry:hover .entry-nonbillable-btn, .entry-nonbillable-btn:focus-visible, .entry-nonbillable-btn.on { opacity: 1; }
+.entry-nonbillable-btn:hover { border-color: var(--ink-muted); }
+.entry-nonbillable-btn.on { color: var(--warning); border-color: var(--warning); background: var(--warning-soft); }
+.entry-nonbillable-btn:disabled { opacity: 0.5; cursor: default; }
 
 /* summaries */
 .summary-item { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }

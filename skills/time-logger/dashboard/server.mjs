@@ -1,7 +1,7 @@
 // Local store server: serves the built app, the JSON data store, and accepts
 // feedback annotations from the UI. No external network access.
 import { createServer } from 'node:http';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, extname, normalize } from 'node:path';
@@ -16,6 +16,7 @@ const FEEDBACK = join(DATA_HOME, 'dashboard', 'feedback');
 const PENDING = join(FEEDBACK, 'pending.json');
 const REVIEWED = join(FEEDBACK, 'reviewed.json');
 const REVIEWED_ENTRIES = join(FEEDBACK, 'reviewed_entries.json');
+const TIME_LOGS = join(DATA_HOME, 'time_logs');
 const PORT = process.env.PORT || get('dashboard.port', 4680);
 
 const MIME = {
@@ -161,6 +162,41 @@ const server = createServer(async (req, res) => {
       await writeFile(REVIEWED_ENTRIES, JSON.stringify(list, null, 2));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ ok: true, reviewed: list }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, error: String(e) }));
+    }
+  }
+
+  // Non-billable: unlike "reviewed", this changes what the entry actually means, so it's
+  // written into the entry's own heading line in the real time-entries file (not a JSON
+  // sidecar) — that way it survives everywhere the entry goes (Notes API uploads, my_time's
+  // parser), not just this dashboard.
+  if (path === '/api/entries/non-billable' && req.method === 'POST') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const { date, heading, nonBillable } = JSON.parse(body);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new Error('date must be YYYY-MM-DD');
+      if (!heading) throw new Error('heading required');
+      const file = join(TIME_LOGS, `time_entries_${date.replace(/-/g, '')}.md`);
+      const md = await readFile(file, 'utf8');
+      const stableOf = (line) => line.replace(/\s*\[non-billable\]\s*$/i, '').trim();
+      let found = false;
+      const updated = md.split('\n').map((line) => {
+        if (!line.startsWith('### ') || found) return line;
+        const content = line.slice(4);
+        if (stableOf(content) !== heading) return line;
+        found = true;
+        return '### ' + (nonBillable ? `${stableOf(content)} [non-billable]` : stableOf(content));
+      });
+      if (!found) throw new Error('entry not found for that date/heading');
+      await writeFile(file, updated.join('\n'));
+      // Re-render synchronously so the change is visible on the client's next poll, not just
+      // after the next /time-logger refresh.
+      execFileSync('node', ['scripts/render.mjs'], { cwd: ROOT });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: true }));
     } catch (e) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ ok: false, error: String(e) }));

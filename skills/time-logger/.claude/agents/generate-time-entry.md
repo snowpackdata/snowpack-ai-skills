@@ -184,6 +184,10 @@ Description.
   record) but is never described as part of, or in support of, the configured org's work.
   Keep its descriptions self-contained.
 - Open Items inherit the tag of the entry they came from: `- [ ] [client: BGC] item`.
+- An entry may also carry a trailing `[non-billable]` tag, **after** `[client: Name]`
+  (`... [client: Name] [non-billable]`). This is a manual flag the user sets from the
+  dashboard — never add it yourself, and when merging, preserve it exactly on any existing
+  entry that already has it, even if you're extending that entry's description.
 
 **Description rules:**
 - 2–3 sentences, plain prose, no bullets, no newlines within a description

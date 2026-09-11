@@ -771,7 +771,22 @@ function CommentBox({ context, submit, onDone, placeholder }) {
 
 function Entry({ day, entry, pending, submit, remove, isReviewed, toggleReviewed }) {
   const [open, setOpen] = useState(false);
+  const [nbBusy, setNbBusy] = useState(false);
   const fb = pending.filter((p) => p.date === day.date && p.heading === entry.heading && !p.resolved);
+  // Writes directly into the entry's heading line in the real time-entries file (not a JSON
+  // sidecar like "reviewed") — this changes what the entry means, so it has to live in the
+  // source of truth to survive Notes API uploads and my_time's parser. The store re-renders
+  // server-side before this resolves, so the next 5s poll picks up the change.
+  const toggleNonBillable = async () => {
+    setNbBusy(true);
+    try {
+      await fetch('/api/entries/non-billable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: day.date, heading: entry.heading, nonBillable: !entry.non_billable }),
+      });
+    } finally { setNbBusy(false); }
+  };
   return (
     <div className="entry">
       <div className={`entry-badge ${entry.is_meeting ? 'meet' : ''}`}>{entry.letter || '·'}</div>
@@ -783,6 +798,12 @@ function Entry({ day, entry, pending, submit, remove, isReviewed, toggleReviewed
           <ClientChip client={entry.client} />
           {entry.hours != null && <span className="hours">{entry.hours}h</span>}
           <span className="spacer" />
+          <button
+            className={`entry-nonbillable-btn ${entry.non_billable ? 'on' : ''}`}
+            onClick={toggleNonBillable} disabled={nbBusy}
+            title={entry.non_billable ? 'Non-billable — click to unmark' : 'Mark this entry as non-billable'}>
+            {entry.non_billable ? 'Non-billable' : 'Bill?'}
+          </button>
           <button
             className={`entry-review-btn ${isReviewed ? 'on' : ''}`}
             onClick={() => toggleReviewed(!isReviewed)}

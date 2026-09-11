@@ -1,8 +1,12 @@
 # Submit instructions — <destination name>
 
-Read by `/time-logger submit` after the org gate. Input: the eligible entries for one date,
-each with start, end, hours, `[client: Name]`, heading, and description. Fill in every
-section; delete the guidance in angle brackets.
+Read by `/time-logger submit` after the org gate. Input: the eligible entries for one date, or
+a pooled set across a range if the user submitted `from..to` — each entry carries its own date,
+start, end, hours, `[client: Name]`, heading, and description. Handling a range is optional:
+grouping entries by date and repeating Prerequisites through Write once per date (as
+`synced-folder.md` does) is enough for most destinations; only build something smarter (a
+real cross-day summary or check, as `cronos.md` does) if the destination benefits from seeing
+the whole range at once. Fill in every section; delete the guidance in angle brackets.
 
 ## Prerequisites
 

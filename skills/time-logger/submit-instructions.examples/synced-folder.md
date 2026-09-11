@@ -1,9 +1,12 @@
 # Submit instructions — synced folder
 
-Read by `/time-logger submit` after the org gate. For machines where no billing connector can
-be installed: writes one file per day into a folder that a desktop sync client (Google Drive,
-Dropbox, OneDrive) mirrors to the client, who imports it on their side. Edit the three values
-under **Settings** before first use.
+Read by `/time-logger submit` after the org gate, for the eligible entries of one date or a
+range. For machines where no billing connector can be installed: writes one file per day into
+a folder that a desktop sync client (Google Drive, Dropbox, OneDrive) mirrors to the client,
+who imports it on their side. A range is just this file-per-day behavior repeated across
+however many dates are in scope — group the eligible entries by date first, then run
+Prerequisites through Write once per date. Edit the three values under **Settings** before
+first use.
 
 ## Settings
 

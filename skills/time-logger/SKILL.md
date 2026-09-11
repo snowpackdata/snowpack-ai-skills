@@ -1,10 +1,10 @@
 ---
 name: time-logger
-description: Slash-command time logger. Run /time-logger setup, refresh entries [date], submit [date], status, morning, refresh [section], feedback, summary [focus] (standup is an alias), dashboard [build|install|start|open], or /time-logger followed by any free-form question about your time, sources, or dashboard state. Builds a daily context file from Slack, Google Calendar, Claude Code sessions, GitHub, and Granola, drafts time entries from it, reviews them on a local Morning Dashboard, and on request submits them wherever this machine's submit instructions point (Cronos, a synced folder, etc.).
+description: Slash-command time logger. Run /time-logger setup, refresh entries [date], submit [date | from..to], status, morning, refresh [section], feedback, summary [focus] (standup is an alias), dashboard [build|install|start|open], or /time-logger followed by any free-form question about your time, sources, or dashboard state. Builds a daily context file from Slack, Google Calendar, Claude Code sessions, GitHub, and Granola, drafts time entries from it, reviews them on a local Morning Dashboard, and on request submits them wherever this machine's submit instructions point (Cronos, a synced folder, etc.).
 summary: "/time-logger setup | refresh entries | submit | morning | summary — drafts daily entries from your tools, with a local review dashboard."
 owner: "@jarellano01"
 status: production
-argument-hint: "setup | refresh entries [date] | submit [date] | status | morning | refresh [section] | feedback | summary [focus] | dashboard [build|install|start|open] | <any question>"
+argument-hint: "setup | refresh entries [date] | submit [date | from..to] | status | morning | refresh [section] | feedback | summary [focus] | dashboard [build|install|start|open] | <any question>"
 disable-model-invocation: true
 ---
 
@@ -28,8 +28,10 @@ project you have open. The skill folder itself holds only code and templates.
                                 draft the day's time entries, and build the combined file —
                                 today always re-checks every source; a past date only fetches
                                 what's missing
-/time-logger submit [date]      run the org gate on the draft, then follow this machine's
-                                submit instructions after you confirm
+/time-logger submit [date | from..to]   run the org gate across the date (or range), then
+                                follow this machine's submit instructions after you confirm —
+                                a range lets the instructions file do a real weekly review
+                                (`cronos.md` does; see submit-instructions.examples/)
 /time-logger status             what's configured, what's fetched, dashboard state
 /time-logger morning            daily flow: apply dashboard comments, backfill the week,
                                 refresh everything, open the dashboard
@@ -47,7 +49,8 @@ project you have open. The skill folder itself holds only code and templates.
 ```
 
 `[date]` defaults to today. Accepts `YYYY-MM-DD`, `today`, `yesterday`, or a weekday
-name (meaning the most recent one, e.g. `friday`).
+name (meaning the most recent one, e.g. `friday`). `submit` alone also accepts a range,
+`from..to` (each side resolved the same way, e.g. `monday..friday`), for a multi-day review.
 
 ## Bootstrap (runs automatically on every invocation)
 
@@ -75,7 +78,7 @@ The subcommand is `$0`; the optional argument is `$1` (for `summary` and questio
 |---|---|
 | *(empty)* or `help` | Print the Usage block above and stop. |
 | `setup` | Follow [`references/setup.md`](./references/setup.md) — read it now. |
-| `submit` | Resolve the date, then run **Submit** below. |
+| `submit` | Resolve the date or range, then run **Submit** below. |
 | `status` | Run **Status** below. |
 | `morning` | Follow [`references/morning.md`](./references/morning.md). |
 | `refresh` | Follow [`references/dash-refresh.md`](./references/dash-refresh.md) with `$1` as the section (`entries` covers what used to be `prefetch` + `log`) and, when the section is `entries`, `$2` as the date. |
@@ -90,6 +93,11 @@ For a weekday name, pick the most recent past occurrence (if today is that weekd
 today). Normalize to `YYYY-MM-DD` and echo the resolved date back to the user before
 doing anything else, e.g. `Resolved "friday" → 2026-09-05`.
 
+**Resolving a range** (`submit` only): `from..to` — resolve each side the same way as a single
+date, independently, then require `from <= to` (swap and say so if given backwards, never
+silently reject). Echo the resolved range the same way, e.g. `Resolved "monday..friday" →
+2026-09-08..2026-09-12`.
+
 Pulling raw activity and drafting entries for a date is now one thing — `/time-logger refresh
 entries [date]`, in [`references/dash-refresh.md`](./references/dash-refresh.md). It fetches
 from every enabled source (subagents per integration, run in parallel), spawns
@@ -98,25 +106,36 @@ combined file. Suggest it whenever a subcommand below needs raw or drafted data 
 
 ## Submit
 
-Sends reviewed entries for one date to wherever this machine is configured to send them. The
-skill has no built-in destination: steps 1–4 are fixed safety rails, and everything after them
-comes from the instructions file named by `submit.instructions` in `capabilities.yml`
-(`<data home>/submit-instructions.md` by default). Templates for common destinations live in
-`<skill_dir>/submit-instructions.examples/` — `cronos.md`, `synced-folder.md`, `TEMPLATE.md`.
+Sends reviewed entries for one date, or a range, to wherever this machine is configured to
+send them. The skill has no built-in destination: steps 1–4 are fixed safety rails, and
+everything after them comes from the instructions file named by `submit.instructions` in
+`capabilities.yml` (`<data home>/submit-instructions.md` by default). Templates for common
+destinations live in `<skill_dir>/submit-instructions.examples/` — `cronos.md` (the only one
+that currently does anything different for a range — a real multi-day review, not just a loop;
+see its own file), `synced-folder.md`, `TEMPLATE.md`. A range is otherwise just steps 1–4
+repeated per date, with every date's eligible entries pooled into one set before step 5 — an
+instructions file that doesn't care about ranges can ignore the distinction entirely and treat
+the pooled set like any other.
 
-1. Require `<data home>/time_logs/time_entries_YYYYMMDD.md`. If missing, run `refresh entries
-   <date>` first.
+1. For each date in scope, require `<data home>/time_logs/time_entries_YYYYMMDD.md`. If any
+   are missing, run `refresh entries <date>` for those first.
 2. Require `submit.instructions` to be non-blank and the file to exist. If blank, say submit
    is disabled on this machine and point to `/time-logger setup`. If the path is set but the
    file is missing, say so and stop — never invent a destination.
-3. If `<data home>/dashboard/feedback/pending.json` has unresolved `time_entry_comment` items
-   for this date, run the `feedback` flow first so the submit reflects the user's corrections.
-4. **Org gate.** Read the Orgs and Clients sections of `user-preferences.md` and `client.org`
-   from `capabilities.yml`. Only entries whose `[client: Name]` tag resolves to a client
-   under that org are eligible. List every entry under any other org, plus `unknown` and
-   untagged ones, in a separate "not submitted" block with its reason. These never reach the
-   instructions file, even if asked to "submit everything"; the user must retag the entry
-   first. Pass each eligible entry's client `kind` along — the instructions may use it.
+3. For each date, if `<data home>/dashboard/feedback/pending.json` has unresolved
+   `time_entry_comment` items for it, run the `feedback` flow first so the submit reflects the
+   user's corrections.
+4. **Org gate**, applied per date, then pooled. Read the Orgs and Clients sections of
+   `user-preferences.md` and `client.org` from `capabilities.yml`. Only entries whose
+   `[client: Name]` tag resolves to a client under that org are eligible. List every entry
+   under any other org, plus `unknown` and untagged ones, in a separate "not submitted" block
+   with its reason (and its date, when submitting a range). These never reach the instructions
+   file, even if asked to "submit everything"; the user must retag the entry first. Pass each
+   eligible entry's client `kind` and date along — the instructions may use either.
+   Also exclude any entry carrying a trailing `[non-billable]` tag (set manually from the
+   dashboard) into that same "not submitted" block, reason `marked non-billable` — this
+   overrides the org gate, so a non-billable entry never reaches the instructions file even
+   under the configured org.
 5. Read the instructions file and follow it for the eligible entries. It decides how to
    detect entries already submitted (exclude those as `already submitted`), how to map a
    client to the destination's identifier, what the review table shows, and what to write.
