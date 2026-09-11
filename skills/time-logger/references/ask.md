@@ -28,13 +28,13 @@ Classify the question:
   fetched since; want me to refresh first?") and ask whether to refresh or answer as-is. If
   the user already said "just tell me" or the staleness is under an hour, skip the question
   and just note the age.
-- **Really a subcommand in disguise** — "refresh the dashboard", "log Friday", "submit
-  yesterday", "summarize my week for the analytics review" (→ `summary`). Say which
-  subcommand you're running and run it.
+- **Really a subcommand in disguise** — "refresh the dashboard", "draft Friday's entries",
+  "submit yesterday", "summarize my week for the analytics review" (→ `summary`). Say which
+  subcommand you're running (`refresh entries friday`, etc.) and run it.
 
-A refresh, when accepted, is the **Log** flow for today (prefetch enabled sources, then
-`generate-time-entry`, which merges) followed by `node <data home>/app/dashboard/scripts/render.mjs`.
-Don't build the combined file — that stays with `log` and `morning`.
+A refresh, when accepted, is `/time-logger refresh entries` for today (refetch enabled
+sources, `generate-time-entry`, which merges — entries you've already commented on survive —
+and the combined file), followed by `node <data home>/app/dashboard/scripts/render.mjs`.
 
 ## 3. Answer from the files
 

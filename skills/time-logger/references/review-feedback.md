@@ -34,6 +34,17 @@ no outward-facing tools; `pr_comment` items always wait for an interactive run.
    rather than skipping it. Also log any generalizable correction ("always skip X") to
    `user-preferences.md` per the generate agent's feedback loop.
 
+   **Mark it reviewed once applied.** A dashboard checkbox on each entry lets the user mark it
+   reviewed directly, but leaving a comment does *not* mark it reviewed on its own — only
+   applying that comment does, since that's the point the loop actually closed. After editing
+   the block, add `{"date": "YYYY-MM-DD", "heading": "<heading>"}` to the array in
+   `dashboard/feedback/reviewed_entries.json` (create the file as `[]` first if it doesn't
+   exist; merge, don't overwrite — read the current array, add the entry, write it back).
+   Use the block's **final** heading after your edit (a reworded entry keeps its heading; a
+   split adds one entry per resulting block; a dropped entry has nothing to mark — if it had a
+   prior reviewed record, remove that entry from the array too, since the block it referred to
+   no longer exists).
+
 3. **PR comments**: interpret the note and act via the `gh` CLI (repo/number come from the
    `pr` field):
    - "close this" / "superseded" / "abandon" → **confirm with the user first** (one batch

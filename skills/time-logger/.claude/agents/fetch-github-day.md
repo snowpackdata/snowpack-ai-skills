@@ -1,6 +1,6 @@
 ---
 name: fetch-github-day
-description: Fetches GitHub commits, PRs opened, and PR review activity for a specific date using the gh CLI. Saves output to ~/.local/share/time-logger/raw/github/YYYY-MM-DD.md. Invoked by `/time-logger prefetch` with a target date.
+description: Fetches GitHub commits, PRs opened, and PR review activity for a specific date using the gh CLI. Saves output to ~/.local/share/time-logger/raw/github/YYYY-MM-DD.md. Invoked by `/time-logger refresh entries` with a target date.
 tools: Bash, Write
 model: haiku
 color: orange

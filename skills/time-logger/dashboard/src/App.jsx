@@ -48,6 +48,26 @@ function OrgTotals({ day }) {
   });
 }
 
+// Primary-org hours vs everything else (other orgs, personal, unknown) for a day, so the
+// day list can show "10/6h" instead of one combined total that hides how much was billable.
+function orgSplit(day) {
+  let primary = 0, other = 0;
+  for (const [c, h] of Object.entries(day.client_hours || {})) {
+    if (CONFIG.org && clientMeta(c).org === CONFIG.org) primary += h; else other += h;
+  }
+  const round = (n) => Math.round(n * 100) / 100;
+  return { primary: round(primary), other: round(other) };
+}
+function DayHours({ day }) {
+  const { primary, other } = orgSplit(day);
+  if (!other) return <span className="muted num">{day.hours}</span>;
+  return (
+    <span className="muted num">
+      {primary}<span className="other-hours" title="Non-client hours (other orgs, personal)">/{other}</span>h
+    </span>
+  );
+}
+
 function TicketLink({ id, className = 'ticket' }) {
   if (!CONFIG.jira_browse_url) return <span className={className}>{id}</span>;
   return <a className={className} href={CONFIG.jira_browse_url + id} target="_blank" rel="noreferrer">{id}</a>;
@@ -191,6 +211,27 @@ function useReviewed() {
     await refresh();
   }, [refresh]);
   return { reviewed, toggle };
+}
+
+function useReviewedEntries() {
+  const [reviewedEntries, setReviewedEntries] = useState([]);
+  const refresh = useCallback(async () => {
+    try {
+      const r = await fetch('/api/reviewed-entries');
+      if (r.ok) setReviewedEntries(await r.json());
+    } catch { /* ignore */ }
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+  const toggle = useCallback(async (date, heading, val) => {
+    const r = await fetch('/api/reviewed-entries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, heading, reviewed: val }),
+    });
+    if (!r.ok) throw new Error('reviewed-entry toggle failed');
+    await refresh();
+  }, [refresh]);
+  return { reviewedEntries, toggle };
 }
 
 function useJobs() {
@@ -728,7 +769,7 @@ function CommentBox({ context, submit, onDone, placeholder }) {
   );
 }
 
-function Entry({ day, entry, pending, submit, remove }) {
+function Entry({ day, entry, pending, submit, remove, isReviewed, toggleReviewed }) {
   const [open, setOpen] = useState(false);
   const fb = pending.filter((p) => p.date === day.date && p.heading === entry.heading && !p.resolved);
   return (
@@ -741,6 +782,13 @@ function Entry({ day, entry, pending, submit, remove }) {
           {entry.is_meeting && <span className="mtag">MEETING</span>}
           <ClientChip client={entry.client} />
           {entry.hours != null && <span className="hours">{entry.hours}h</span>}
+          <span className="spacer" />
+          <button
+            className={`entry-review-btn ${isReviewed ? 'on' : ''}`}
+            onClick={() => toggleReviewed(!isReviewed)}
+            title={isReviewed ? 'Reviewed — click to unmark' : 'Mark this entry as reviewed'}>
+            <Icon name="check" />
+          </button>
         </div>
         {!entry.is_meeting && <p className="entry-body">{entry.body}</p>}
         <div>
@@ -768,6 +816,8 @@ function TimeEntriesPage({ section, pending, submit, remove }) {
     setRevBusy(true);
     try { await toggle(date, !reviewedDates.has(date)); } finally { setRevBusy(false); }
   };
+  const { reviewedEntries, toggle: toggleEntry } = useReviewedEntries();
+  const reviewedEntryKeys = new Set(reviewedEntries.map((e) => `${e.date}|${e.heading}`));
 
   return (
     <div className="te-layout">
@@ -780,7 +830,7 @@ function TimeEntriesPage({ section, pending, submit, remove }) {
               <span className="spacer" />
               {reviewedDates.has(d.date) && <span className="rev-chip" title="Reviewed"><Icon name="check" /></span>}
               {countFor(d.date) > 0 && <span className="fb-count"><Icon name="comment" />{countFor(d.date)}</span>}
-              <span className="muted">{d.hours}</span>
+              <DayHours day={d} />
             </button>
           ))}
           {unresolved.length > 0 && (
@@ -819,9 +869,14 @@ function TimeEntriesPage({ section, pending, submit, remove }) {
             </div>
             <div className="panel">
               <DayTimeline day={day} />
-              {day.entries.map((e) => (
-                <Entry key={`${day.date}|${e.heading}`} day={day} entry={e} pending={pending} submit={submit} remove={remove} />
-              ))}
+              {day.entries.map((e) => {
+                const entryKey = `${day.date}|${e.heading}`;
+                return (
+                  <Entry key={entryKey} day={day} entry={e} pending={pending} submit={submit} remove={remove}
+                    isReviewed={reviewedEntryKeys.has(entryKey)}
+                    toggleReviewed={(val) => toggleEntry(day.date, e.heading, val)} />
+                );
+              })}
             </div>
           </>
         )}

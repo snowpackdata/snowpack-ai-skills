@@ -1,8 +1,12 @@
-# /time-logger refresh [section]
+# /time-logger refresh [section] [date]
 
-Refreshes the JSON data store the Morning Dashboard reads from. Argument: a section name
-(`time_entries`, `todos`, `calendar`, `slack`, `digest`, `artifacts`, `github`) or `all` /
-empty for everything. `slack` covers both the raw day file and the conversations summary.
+Refreshes the JSON data store the Morning Dashboard reads from, and — via the `entries`
+section — is also the one place that pulls raw activity and drafts time entries for a date
+(this absorbed the old standalone `prefetch` and `log` subcommands; there is no other way to
+fetch or draft). Argument: a section name (`entries`, `todos`, `calendar`, `slack`, `digest`,
+`artifacts`, `github`) or `all` / empty for everything. Only `entries` takes a second argument,
+the date (default today; same `YYYY-MM-DD` / `today` / `yesterday` / weekday-name resolution as
+the rest of the skill). `slack` covers both the raw day file and the conversations summary.
 
 Paths are relative to the data home (`~/.local/share/time-logger/`, or
 `$TIME_LOGGER_DATA_HOME`). The built app lives at `app/dashboard/` inside it.
@@ -21,15 +25,35 @@ Paths are relative to the data home (`~/.local/share/time-logger/`, or
 
 ## Steps
 
-1. **Refetch today and redraft** (sections `calendar`, `slack`, `time_entries`, or `all`):
-   spawn the fetch agents for every enabled source in parallel for today — not only when the
-   raw file is missing; a refresh means *now*. For `time_entries` or `all`, then run
-   `generate-time-entry` for today. It merges with the existing draft, so entries the user
-   already commented on survive and new work since the last run is appended. This is what
-   lets today's draft grow through the day and be commented on before the day ends. Also run
-   `generate-time-entry` for any weekday this week that has raw data but no
-   `time_logs/time_entries_YYYYMMDD.md`. Skip the combined file here — it belongs to `log` and
-   `morning`.
+1. **Entries** (sections `calendar`, `slack`, `entries`, or `all`; `entries`/`all` also take the
+   optional date `$2`):
+
+   - **Resolve the date** — `$2` if given (per the skill's usual date resolution), else today.
+   - **Fetch.** If the date is **today**, spawn the fetch agents for every enabled source in
+     parallel *now* — not only when the raw file is missing; today keeps evolving, so always
+     ask. This is cheap even run after run because the agents cache internally: the
+     Claude-sessions agent rescans (fast I/O) but reuses a session's cached summary when its
+     turn count and last-activity time haven't moved, and the Slack agent diffs against
+     already-captured message ids and only formats what's new — so an "everything's already up
+     to date" refresh returns almost immediately instead of redoing the same summarization
+     work. If the date is **in the past**, only fetch sources with no existing
+     `raw/{source}/YYYY-MM-DD.md` — a closed day's raw data doesn't need re-pulling (to force a
+     redo, delete that file first).
+   - **Draft.** For `entries` or `all`, run `generate-time-entry` for the resolved date. It
+     merges with the existing draft, so entries the user already commented on survive and new
+     work since the last run is appended. This is what lets today's draft grow through the day
+     and be commented on before it ends.
+   - **Combined file.** For `entries` or `all`, build the day's combined file (raw sections +
+     Recommended Time Log Structure) and sync the dashboard — follow
+     [`combined-file.md`](./combined-file.md). This is pure file concatenation, no extra LLM
+     cost, so it always runs alongside the draft now.
+   - **Week backfill** — only when no explicit date was passed (i.e. this is a general
+     `refresh`/`refresh all`, not a `refresh entries <specific date>`): also run
+     `generate-time-entry` (draft only, no fetch) for any weekday this week that has raw data
+     but no `time_logs/time_entries_YYYYMMDD.md`.
+   - If the agent reports `unknown`-tagged entries, tell the user which ones so they can add a
+     match rule to the Clients section in `user-preferences.md`. Suggest `/time-logger submit
+     <date>` if `submit.instructions` in `capabilities.yml` is set.
 
 2. **Digest** (section `digest` or `all`): run the `summary` flow with the focus
    `daily digest` — the preset in [`summary.md`](./summary.md) fixes scope, sections, client

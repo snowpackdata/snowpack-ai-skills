@@ -272,6 +272,7 @@ a.chip:hover, a.ticket:hover { text-decoration: underline; }
 .day-item.active { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
 .day-item .spacer { flex: 1; }
 .day-item .muted { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.other-hours { color: var(--warning); }
 .te-main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 /* Summaries: the detail panel hugs a readable measure instead of stretching across the page
    with a capped text column inside it. */
@@ -312,13 +313,23 @@ a.chip:hover, a.ticket:hover { text-decoration: underline; }
 .entry-badge.meet { color: var(--meet); }
 .entry-main { min-width: 0; }
 .entry-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.entry-head .spacer { flex: 1; }
 .entry-head .time { color: var(--ink-muted); font-size: 12px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
 .entry-head .title { font-weight: 600; font-size: 14.5px; }
 .entry-head .hours { color: var(--ink-2); font-size: 12px; font-family: var(--font-mono); }
-.entry-body { color: var(--ink-2); margin: 5px 0 0; font-size: 13.5px; max-width: 78ch; }
+.entry-body { color: var(--ink-2); margin: 5px 0 0; font-size: 13.5px; }
 .mtag { display: inline-block; font-size: 10px; letter-spacing: 0.08em; color: var(--meet); border: 1px solid color-mix(in srgb, var(--meet) 50%, transparent); border-radius: 3px; padding: 0 5px; }
 .entry .comment-btn { opacity: 0; }
 .entry:hover .comment-btn, .entry .comment-btn:focus-visible { opacity: 1; }
+.entry-review-btn {
+  align-self: baseline; flex: 0 0 auto; opacity: 0; background: none; cursor: pointer;
+  width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--hairline);
+  color: var(--ink-muted); display: inline-flex; align-items: center; justify-content: center; padding: 0;
+}
+.entry-review-btn .ico { width: 11px; height: 11px; }
+.entry:hover .entry-review-btn, .entry-review-btn:focus-visible, .entry-review-btn.on { opacity: 1; }
+.entry-review-btn:hover { border-color: var(--ink-muted); }
+.entry-review-btn.on { color: var(--good); border-color: var(--good); background: var(--good-soft); }
 
 /* summaries */
 .summary-item { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }

@@ -1,6 +1,6 @@
 ---
 name: fetch-granola-day
-description: Fetches Granola meeting notes and summaries for a specific date. Saves output to ~/.local/share/time-logger/raw/granola/YYYY-MM-DD.md. Invoked by `/time-logger prefetch` with a target date.
+description: Fetches Granola meeting notes and summaries for a specific date. Saves output to ~/.local/share/time-logger/raw/granola/YYYY-MM-DD.md. Invoked by `/time-logger refresh entries` with a target date.
 model: haiku
 color: purple
 ---

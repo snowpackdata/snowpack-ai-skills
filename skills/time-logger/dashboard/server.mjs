@@ -15,6 +15,7 @@ const DATA = join(DATA_HOME, 'dashboard', 'data');
 const FEEDBACK = join(DATA_HOME, 'dashboard', 'feedback');
 const PENDING = join(FEEDBACK, 'pending.json');
 const REVIEWED = join(FEEDBACK, 'reviewed.json');
+const REVIEWED_ENTRIES = join(FEEDBACK, 'reviewed_entries.json');
 const PORT = process.env.PORT || get('dashboard.port', 4680);
 
 const MIME = {
@@ -30,6 +31,11 @@ async function readPending() {
 
 async function readReviewed() {
   try { return JSON.parse(await readFile(REVIEWED, 'utf8')); }
+  catch { return []; }
+}
+
+async function readReviewedEntries() {
+  try { return JSON.parse(await readFile(REVIEWED_ENTRIES, 'utf8')); }
   catch { return []; }
 }
 
@@ -126,6 +132,33 @@ const server = createServer(async (req, res) => {
       const list = [...set].sort();
       await mkdir(FEEDBACK, { recursive: true });
       await writeFile(REVIEWED, JSON.stringify(list, null, 2));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: true, reviewed: list }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, error: String(e) }));
+    }
+  }
+
+  // Reviewed entries: individual time entries the user has signed off on (by date + heading).
+  if (path === '/api/reviewed-entries' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify(await readReviewedEntries()));
+  }
+  if (path === '/api/reviewed-entries' && req.method === 'POST') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const { date, heading, reviewed } = JSON.parse(body);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new Error('date must be YYYY-MM-DD');
+      if (!heading) throw new Error('heading required');
+      const key = (e) => `${e.date}|${e.heading}`;
+      const map = new Map((await readReviewedEntries()).map((e) => [key(e), e]));
+      if (reviewed) map.set(key({ date, heading }), { date, heading });
+      else map.delete(key({ date, heading }));
+      const list = [...map.values()];
+      await mkdir(FEEDBACK, { recursive: true });
+      await writeFile(REVIEWED_ENTRIES, JSON.stringify(list, null, 2));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ ok: true, reviewed: list }));
     } catch (e) {

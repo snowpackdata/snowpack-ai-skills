@@ -46,7 +46,7 @@ Body sections:
   todos file is configured), open PRs. Verdicts and next actions, not raw evidence.
 
 ## Yesterday — <Weekday, Mon D>
-2–3 sentences on the last workday's entries. If none exist, one line saying which prefetch to run.
+2–3 sentences on the last workday's entries. If none exist, one line saying which `refresh entries <date>` to run.
 
 ## This week (<Mon D>–<today>)
 Monday through today, one short paragraph.
@@ -78,7 +78,7 @@ ls -l ~/.local/share/time-logger/raw/combined/time-log_YYYY-MM-DD_<slug>.md
 
 Classify each day:
 
-- **Missing** — no combined file → needs a prefetch + log run.
+- **Missing** — no combined file → needs a `refresh entries <date>` run.
 - **Possibly outdated** — the file's last-modified date is the *same calendar day* the file
   covers, and that day is now in the past. (A fetch made mid-day can't have captured work done
   after it; a fetch made any later day is complete.) → needs a rerun.
@@ -86,7 +86,7 @@ Classify each day:
 - **Today** — always fetch/refetch, regardless of whether a combined file exists.
 
 Also note per day whether a `## Recommended Time Log Structure` section exists (the day has
-been through `log`, and possibly the dashboard review). Prefer that section as the source of
+been through `refresh entries`, and possibly the dashboard review). Prefer that section as the source of
 truth when summarizing; fall back to the raw sections when it's absent — don't block the
 standup on an unreviewed day.
 
@@ -94,12 +94,14 @@ standup on an unreviewed day.
 
 If any days are missing or possibly outdated, **tell the user first** — one line, e.g.
 "Mon was never fetched and Tue was fetched mid-day; refetching both before summarizing" —
-then run **Prefetch** for those days (parallel fetch agents), rebuild each combined file per
-[`combined-file.md`](./combined-file.md). Prefetch is
-idempotent — rerunning a day overwrites in place. Don't regenerate time entries here (standup
-only needs the data); carry any existing Recommended Time Log Structure section over, and
-mention that refetched days haven't been re-logged. Fresh time logs matter for these
-summaries — don't skip this step because the focus is informal.
+then spawn the fetch agents directly for those days (the same `fetch-*-day` agents
+`/time-logger refresh entries` uses, run in parallel, in parallel across days too), and rebuild
+each combined file per [`combined-file.md`](./combined-file.md). This is idempotent —
+rerunning a day overwrites in place. Don't regenerate time entries here (standup only needs
+the data, and drafting is a deliberate `refresh entries` call, not a side effect of asking for
+a summary); carry any existing Recommended Time Log Structure section over, and mention that
+refetched days haven't been re-logged. Fresh time logs matter for these summaries — don't
+skip this step because the focus is informal.
 
 If everything is fresh, say so in one line and move on.
 

@@ -1,10 +1,10 @@
 ---
 name: time-logger
-description: Slash-command time logger. Run /time-logger setup, prefetch [date], log [date], submit [date], status, morning, refresh [section], feedback, summary [focus] (standup is an alias), dashboard [build|install|start|open], or /time-logger followed by any free-form question about your time, sources, or dashboard state. Builds a daily context file from Slack, Google Calendar, Claude Code sessions, GitHub, and Granola, drafts time entries from it, reviews them on a local Morning Dashboard, and on request submits them wherever this machine's submit instructions point (Cronos, a synced folder, etc.).
-summary: "/time-logger setup | prefetch | log | submit | morning | summary — drafts daily time entries from your tools, with a local review dashboard."
+description: Slash-command time logger. Run /time-logger setup, refresh entries [date], submit [date], status, morning, refresh [section], feedback, summary [focus] (standup is an alias), dashboard [build|install|start|open], or /time-logger followed by any free-form question about your time, sources, or dashboard state. Builds a daily context file from Slack, Google Calendar, Claude Code sessions, GitHub, and Granola, drafts time entries from it, reviews them on a local Morning Dashboard, and on request submits them wherever this machine's submit instructions point (Cronos, a synced folder, etc.).
+summary: "/time-logger setup | refresh entries | submit | morning | summary — drafts daily entries from your tools, with a local review dashboard."
 owner: "@jarellano01"
 status: production
-argument-hint: "setup | prefetch [date] | log [date] | submit [date] | status | morning | refresh [section] | feedback | summary [focus] | dashboard [build|install|start|open] | <any question>"
+argument-hint: "setup | refresh entries [date] | submit [date] | status | morning | refresh [section] | feedback | summary [focus] | dashboard [build|install|start|open] | <any question>"
 disable-model-invocation: true
 ---
 
@@ -24,15 +24,16 @@ project you have open. The skill folder itself holds only code and templates.
 ```
 /time-logger setup              probe integrations, collect client config, write capabilities.yml,
                                 build the dashboard, optionally install launchd jobs
-/time-logger prefetch [date]    pull raw activity for a date from every enabled source
-/time-logger log [date]         draft the day's time entries + build the combined file
-                                (runs prefetch first if raw data is missing)
+/time-logger refresh entries [date]   pull raw activity for a date from every enabled source,
+                                draft the day's time entries, and build the combined file —
+                                today always re-checks every source; a past date only fetches
+                                what's missing
 /time-logger submit [date]      run the org gate on the draft, then follow this machine's
                                 submit instructions after you confirm
 /time-logger status             what's configured, what's fetched, dashboard state
 /time-logger morning            daily flow: apply dashboard comments, backfill the week,
                                 refresh everything, open the dashboard
-/time-logger refresh [section]  refresh dashboard data (time_entries, todos, calendar, slack,
+/time-logger refresh [section]  refresh dashboard data (entries, todos, calendar, slack,
                                 digest, artifacts, github, or all)
 /time-logger feedback           apply comments left in the dashboard UI back to the files
 /time-logger summary [focus]    progress summary for any audience/occasion ("Friday standup Slack
@@ -74,12 +75,10 @@ The subcommand is `$0`; the optional argument is `$1` (for `summary` and questio
 |---|---|
 | *(empty)* or `help` | Print the Usage block above and stop. |
 | `setup` | Follow [`references/setup.md`](./references/setup.md) — read it now. |
-| `prefetch` | Resolve the date, then run **Prefetch** below. |
-| `log` | Resolve the date, then run **Log** below. |
 | `submit` | Resolve the date, then run **Submit** below. |
 | `status` | Run **Status** below. |
 | `morning` | Follow [`references/morning.md`](./references/morning.md). |
-| `refresh` | Follow [`references/dash-refresh.md`](./references/dash-refresh.md) with `$1` as the section. |
+| `refresh` | Follow [`references/dash-refresh.md`](./references/dash-refresh.md) with `$1` as the section (`entries` covers what used to be `prefetch` + `log`) and, when the section is `entries`, `$2` as the date. |
 | `feedback` | Follow [`references/review-feedback.md`](./references/review-feedback.md). |
 | `summary` | Follow [`references/summary.md`](./references/summary.md) with the rest of the argument string as the focus. |
 | `standup` | Alias — same as `summary Friday standup Slack message — this week and what's next`. |
@@ -91,42 +90,11 @@ For a weekday name, pick the most recent past occurrence (if today is that weekd
 today). Normalize to `YYYY-MM-DD` and echo the resolved date back to the user before
 doing anything else, e.g. `Resolved "friday" → 2026-09-05`.
 
-## Prefetch
-
-1. Read `<data home>/capabilities.yml`.
-2. Spawn, **in parallel**, one subagent per enabled integration, passing the date in the
-   task prompt as `YYYY-MM-DD`:
-
-   | capabilities key | subagent |
-   |---|---|
-   | `claude_sessions` | `fetch-claude-sessions-day` |
-   | `slack` | `fetch-slack-day` |
-   | `google_calendar` | `fetch-calendar-day` |
-   | `github` | `fetch-github-day` |
-   | `granola` | `fetch-granola-day` |
-
-   Each writes `<data home>/raw/{source}/YYYY-MM-DD.md` and returns a one-line count. Relay
-   those lines to the user as a short table.
-3. Stop there — prefetch does not generate. Suggest `/time-logger log <date>` next.
-
-## Log
-
-1. Check which raw files exist: `ls <data home>/raw/*/YYYY-MM-DD.md` (ignore `combined/`).
-2. If none exist for the date, run **Prefetch** first and say so.
-3. Spawn `generate-time-entry` with the date. It reads every raw file present plus
-   `user-preferences.md`, applies the standing rules (real start times snapped to 15 minutes, effort-based
-   durations, overlap allowed, artifact/document review time, one scope per entry, one `[client: Name]` tag
-   per entry from the Orgs/Clients sections), **merges with an existing file for that date rather
-   than overwriting it**, and writes `<data home>/time_logs/time_entries_YYYYMMDD.md`.
-   If the agent reports `unknown`-tagged entries, tell the user which ones so they can add a
-   match rule to the Clients section.
-4. Build the day's combined file (raw sections + Recommended Time Log Structure) and sync the
-   dashboard — follow
-   [`references/combined-file.md`](./references/combined-file.md).
-5. Show the user the entries verbatim, followed by the agent's one-line summary. Make clear
-   these are drafts — nothing has been logged. If the dashboard is served, point them to
-   `http://localhost:<dashboard.port>/#/time` to review and comment.
-6. Suggest `/time-logger submit <date>` if `submit.instructions` in `capabilities.yml` is set.
+Pulling raw activity and drafting entries for a date is now one thing — `/time-logger refresh
+entries [date]`, in [`references/dash-refresh.md`](./references/dash-refresh.md). It fetches
+from every enabled source (subagents per integration, run in parallel), spawns
+`generate-time-entry` (merges with any existing draft, never overwrites blind), and builds the
+combined file. Suggest it whenever a subcommand below needs raw or drafted data that's missing.
 
 ## Submit
 
@@ -136,7 +104,8 @@ comes from the instructions file named by `submit.instructions` in `capabilities
 (`<data home>/submit-instructions.md` by default). Templates for common destinations live in
 `<skill_dir>/submit-instructions.examples/` — `cronos.md`, `synced-folder.md`, `TEMPLATE.md`.
 
-1. Require `<data home>/time_logs/time_entries_YYYYMMDD.md`. If missing, run **Log** first.
+1. Require `<data home>/time_logs/time_entries_YYYYMMDD.md`. If missing, run `refresh entries
+   <date>` first.
 2. Require `submit.instructions` to be non-blank and the file to exist. If blank, say submit
    is disabled on this machine and point to `/time-logger setup`. If the path is set but the
    file is missing, say so and stop — never invent a destination.

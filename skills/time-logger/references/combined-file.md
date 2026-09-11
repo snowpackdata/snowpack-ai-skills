@@ -1,6 +1,6 @@
 # Combined daily file
 
-Loaded on demand from `SKILL.md` by `/time-logger log` (and by `morning` / `standup` when they
+Loaded on demand by `/time-logger refresh entries` (and by `morning` / `standup` when they
 backfill). One file per day holds every raw source verbatim plus the settled summary of the
 generated entries, so anything downstream (a summary, a submit, a human skim) has one
 place to look.
@@ -49,14 +49,14 @@ Include a `##` section for every source directory that has a file for the date (
 any unrecognized directory name); omit sections for sources that don't exist. The Recommended
 Time Log Structure is derived from `time_logs/time_entries_YYYYMMDD.md` — one short line per
 `###` block with its times, title, and duration, ending with `Total:`. If the entries file
-doesn't exist yet, omit that section (a later `log` run adds it).
+doesn't exist yet, omit that section (a later `refresh entries` run adds it).
 
 Rebuilding is idempotent: rerunning for a date overwrites the file. When rebuilding after a
 refetch and the entries file hasn't changed, carry the existing Recommended Time Log Structure
 section over unchanged.
 
 The combined file stays on this machine. Sending a day's time anywhere is `submit`'s job,
-through the machine's submit instructions, never a side effect of `log`.
+through the machine's submit instructions, never a side effect of `refresh entries`.
 
 ## Sync the dashboard
 

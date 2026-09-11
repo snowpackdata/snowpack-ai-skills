@@ -34,12 +34,13 @@ client-specific values, and writes `capabilities.yml`.
 
 ```
 /time-logger setup              probe integrations, collect client config, build the dashboard
-/time-logger prefetch [date]    pull raw activity for a date from every enabled source
-/time-logger log [date]         draft the day's time entries + build the combined file
+/time-logger refresh entries [date]   pull raw activity for a date from every enabled source,
+                                draft the day's time entries, and build the combined file
 /time-logger submit [date]      org-gate the draft, confirm, then follow this machine's submit instructions
 /time-logger status             what's configured, what's fetched, dashboard state
 /time-logger morning            daily flow: apply comments, backfill, refresh, open the dashboard
-/time-logger refresh [section]  refresh one dashboard section or all
+/time-logger refresh [section]  refresh one dashboard section (entries, todos, calendar, slack,
+                                digest, artifacts, github) or all
 /time-logger feedback           apply comments left in the dashboard UI
 /time-logger summary [focus]    progress summary for any audience; saved to summaries/ and the dashboard (standup = alias)
 /time-logger dashboard <cmd>    build | install | uninstall | start | open
@@ -54,29 +55,35 @@ appended to `user-preferences.md` in the data home so you never repeat them.
 
 ## How it works
 
-1. **Prefetch** — one small subagent per enabled integration (`fetch-*-day`) pulls one
-   source for the target date and writes `raw/{source}/YYYY-MM-DD.md`. They run in
-   parallel. Adding a new integration is a new `fetch-*-day` agent writing to a new
-   `raw/{source}/` directory — nothing else changes.
-2. **Log** — `generate-time-entry` discovers whatever `raw/*/YYYY-MM-DD.md` exists and
-   writes `time_logs/time_entries_YYYYMMDD.md`: entries at their real start times (snapped to
+1. **Refresh entries** — `/time-logger refresh entries [date]` is the one place raw activity
+   gets pulled and drafted (it replaces the old separate `prefetch`/`log` subcommands). One
+   small subagent per enabled integration (`fetch-*-day`) pulls one source for the target date
+   and writes `raw/{source}/YYYY-MM-DD.md`, running in parallel; for today it always re-checks
+   every source, for a past date only what's missing. Two agents cache internally so a repeat
+   check is cheap when nothing changed: the Claude-sessions agent reuses a session's cached
+   summary when its turn count hasn't moved since the last run, and the Slack agent appends
+   only new messages instead of reformatting the whole day. Adding a new integration is a new
+   `fetch-*-day` agent writing to a new `raw/{source}/` directory — nothing else changes.
+   `generate-time-entry` then discovers whatever `raw/*/YYYY-MM-DD.md` exists and writes
+   `time_logs/time_entries_YYYYMMDD.md`: entries at their real start times (snapped to
    15 minutes) with effort-based durations — overlap is allowed and drawn in lanes — with
    plain-prose descriptions, explicit review time for artifacts a session produced, one scope per
    entry. Rerunning a date **merges** with the existing file so your corrections survive.
    A combined file (every raw source + a Recommended Time Log Structure) is built alongside
    it. Nothing leaves the machine until `submit`.
-3. **Review** — the Morning Dashboard (sidebar nav; IBM Plex Sans for UI and prose, Plex Mono
+2. **Review** — the Morning Dashboard (sidebar nav; IBM Plex Sans for UI and prose, Plex Mono
    for numbers; dark) shows the week's entries on a timeline;
    comments you leave there queue for `/time-logger feedback`, which edits the markdown and
    re-renders. The Slack tab summarizes recent conversations with follow-ups first and
    self-DMs excluded; raw messages stay behind a toggle.
-   The scheduled refresh (and the Refresh button) refetches today's sources and redrafts
-   today's entries in merge mode every couple of hours, so today's draft fills in during the
-   day and can be commented on before it ends. Each day shows when its draft was last written.
+   The scheduled refresh (and the Refresh button) redoes the above for today every couple of
+   hours, so today's draft fills in during the day and can be commented on before it ends —
+   caching keeps a refresh where nothing changed fast instead of redoing the same
+   summarization work. Each day shows when its draft was last written.
    Anything typed after `/time-logger` that isn't a subcommand is a question: it reads a
    freshness snapshot first, answers from the files, and offers a refresh only when the
    answer depends on today's data being current.
-4. **Submit** — reads the draft, runs the org gate, then follows the per-machine
+3. **Submit** — reads the draft, runs the org gate, then follows the per-machine
    `submit-instructions.md` named in `capabilities.yml`. The skill has no built-in
    destination: the instructions file decides where entries go, how to detect ones already
    sent, and how clients map to the destination's codes. Two rails are fixed regardless: only

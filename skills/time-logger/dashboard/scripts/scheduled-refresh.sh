@@ -1,6 +1,7 @@
 #!/bin/zsh
-# Scheduled intraday refresh for the Morning Dashboard: refetches today's enabled sources and
-# redrafts today's time entries (merge mode) so they can be reviewed and commented on during the day.
+# Scheduled intraday refresh for the Morning Dashboard: refetches today's enabled sources,
+# redrafts today's time entries (merge mode), and rebuilds the combined file, so they can be
+# reviewed and commented on during the day.
 # Invoked by launchd (com.time-logger.dash-refresh) at 7:13, 9:13, 11:13, 13:13, 15:13 on
 # weekdays, or manually from the dashboard's Refresh button (--force).
 set -u
@@ -68,7 +69,7 @@ cd "$APP"
 
 1. Read $DATA_HOME/capabilities.yml. For every integration under integrations: with enabled: true (claude_sessions, slack, google_calendar, github, granola), spawn the matching fetch agent (fetch-claude-sessions-day, fetch-slack-day, fetch-calendar-day, fetch-github-day, fetch-granola-day) IN PARALLEL for $TODAY. Each writes $DATA_HOME/raw/<source>/$TODAY.md. If agents are unavailable, follow the instructions in $SKILL_DIR/.claude/agents/fetch-*-day.md yourself. If one source fails, continue with the others.
 2. Write $DATA_HOME/dashboard/data/slack_conversations.json per step 2b of $SKILL_DIR/references/dash-refresh.md (last 3 workdays of $DATA_HOME/raw/slack/, self-DMs excluded, follow-ups flagged conservatively). Skip if slack is disabled.
-3. Then spawn generate-time-entry for $TODAY. It merges with $DATA_HOME/time_logs/time_entries_${TODAY//-/}.md if that exists — never overwrite entries already there, only add or extend. Do NOT build the combined file and do NOT upload anything; the morning run owns those.
+3. Then spawn generate-time-entry for $TODAY. It merges with $DATA_HOME/time_logs/time_entries_${TODAY//-/}.md if that exists — never overwrite entries already there, only add or extend. Then build the combined file per $SKILL_DIR/references/combined-file.md (raw sections + Recommended Time Log Structure) — this is cheap file concatenation, not an extra fetch or draft. Do NOT upload or submit anything.
 4. Final output: one line per source, 'slack: <n> messages' / 'calendar: <n> events' / 'claude: <n> sessions' / 'github: <n> items' / 'granola: <n> meetings' or the error, then 'conversations: <n> (<m> need follow-up)', then one line 'draft: <hours>h across <n> entries' or the error." \
   --allowedTools "${ALLOWED[@]}" \
   --output-format text < /dev/null >> "$LOG" 2>&1

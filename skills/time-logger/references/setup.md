@@ -119,4 +119,4 @@ them. If the user declines, mention `/time-logger dashboard start` for a one-off
 ### 7. Confirm completion
 
 Tell the user which integrations are active, where the data home is, whether the dashboard
-is built/served, and that `/time-logger prefetch today` is the quickest way to test.
+is built/served, and that `/time-logger refresh entries today` is the quickest way to test.

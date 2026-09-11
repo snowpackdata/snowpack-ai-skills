@@ -11,8 +11,9 @@ The one-command daily flow. Produces a fully fresh Morning Dashboard at
    render reflects yesterday's corrections.
 
 2. **Backfill gaps**: for each weekday from last Monday through yesterday with no
-   `time_logs/time_entries_YYYYMMDD.md`, run **Prefetch** then **Log** from `SKILL.md` for that
-   date (this includes building the combined file). Skip company holidays if known.
+   `time_logs/time_entries_YYYYMMDD.md`, run `/time-logger refresh entries <date>` for that
+   date (fetches whatever's missing, drafts, and builds the combined file). Skip company
+   holidays if known.
 
 3. **Refresh everything**: run the `refresh` flow ([`dash-refresh.md`](./dash-refresh.md)) with
    `all` — refetches today's sources and redrafts today's entries, writes the daily digest

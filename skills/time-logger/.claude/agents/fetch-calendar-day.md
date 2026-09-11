@@ -1,6 +1,6 @@
 ---
 name: fetch-calendar-day
-description: Fetches Google Calendar events for a specific date and saves them to ~/.local/share/time-logger/raw/calendar/YYYY-MM-DD.md. Invoked by `/time-logger prefetch` with a target date.
+description: Fetches Google Calendar events for a specific date and saves them to ~/.local/share/time-logger/raw/calendar/YYYY-MM-DD.md. Invoked by `/time-logger refresh entries` with a target date.
 model: haiku
 color: blue
 ---

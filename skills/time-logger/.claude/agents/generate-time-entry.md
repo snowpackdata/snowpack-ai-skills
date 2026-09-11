@@ -1,6 +1,6 @@
 ---
 name: generate-time-entry
-description: Generates a single daily time entry file from whatever prefetched raw sources exist for a target date and writes time_logs/time_entries_YYYYMMDD.md. Merges with an existing file for the date instead of overwriting it. No interaction — writes best-guess drafts for later review. Invoked by `/time-logger log`.
+description: Generates a single daily time entry file from whatever raw sources exist for a target date and writes time_logs/time_entries_YYYYMMDD.md. Merges with an existing file for the date instead of overwriting it. No interaction — writes best-guess drafts for later review. Invoked by `/time-logger refresh entries`.
 tools: Read, Write, Bash
 model: sonnet
 color: green
@@ -120,7 +120,7 @@ capture the generation but NOT the reading/understanding time, which is real log
 - Brief acknowledgments = fold into adjacent entries
 
 **Exclusions:**
-- Never log time-logger tooling itself (prefetch/log runs, dashboard refreshes, scheduled
+- Never log time-logger tooling itself (refresh runs, dashboard refreshes, scheduled
   automation) or self-DMs used as notes — these are bookkeeping, not work
 - Interactive analysis or confirmation of an automated job's *output* IS real work
 

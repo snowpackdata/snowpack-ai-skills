@@ -26,7 +26,7 @@ step, so `npx skills add` still works normally. See each skill's own `SKILL.md`.
 <!-- SKILLS-TABLE:START -->
 | Status | Skill | Description | Owner | Notes |
 |---|---|---|---|---|
-| ✅ Production Ready | [`time-logger`](./skills/time-logger) | /time-logger setup \| prefetch \| log \| submit \| morning \| summary — drafts daily time entries from your tools, with a local review dashboard. | @jarellano01 |  |
+| ✅ Production Ready | [`time-logger`](./skills/time-logger) | /time-logger setup \| refresh entries \| submit \| morning \| summary — drafts daily entries from your tools, with a local review dashboard. | @jarellano01 |  |
 | 🔍 Ready for Review | [`gather-context`](./skills/gather-context) | Systematically maps an unfamiliar pipeline's declared and tribal context. Use when onboarding onto or auditing a client pipeline. | @auwng | Looking for a second tester. |
 | 🔍 Ready for Review | [`plain-style`](./skills/plain-style) | Revises drafted prose to be direct, active, and free of filler. Use to tighten writing before it ships. | @auwng | Looking for a second tester. |
 <!-- SKILLS-TABLE:END -->
