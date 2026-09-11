@@ -27,7 +27,7 @@ is `false`, write `~/.local/share/time-logger/raw/claude/YYYY-MM-DD.md` containi
 python3 ~/.local/share/time-logger/scripts/scan_sessions.py YYYY-MM-DD
 ```
 
-Replace `YYYY-MM-DD` with the target date. The script scans JSONL files under `~/.claude/projects/`, filters to lines timestamped on that date, extracts turn counts, first/last activity times (in PDT), and message excerpts. This full rescan runs every time, even when reusing a cached summary below — it's cheap and is what guarantees nothing is missed, including a session that resumes after being idle for days or one that spans midnight. Two things keep it cheap even on a machine with a lot of history:
+Replace `YYYY-MM-DD` with the target date. The script scans JSONL files under `~/.claude/projects/`, filters to lines timestamped on that date, extracts turn counts, first/last activity times (in PDT), and message excerpts — all of them for a session, not just the first several: a fixed small cap on excerpts was measured to systematically hide whatever happened after it, which is exactly where a long session's outcome usually is. There's a character-budget safety valve for a genuinely pathological session (excerpts spanning hundreds of KB), which keeps both the start and the end rather than only the start if it ever triggers — a normal day's sessions, even a long one, come in well under it. This full rescan runs every time, even when reusing a cached summary below — it's cheap and is what guarantees nothing is missed, including a session that resumes after being idle for days or one that spans midnight. Two things keep it cheap even on a machine with a lot of history:
 - It skips any file whose mtime predates the target day's local start — a transcript never
   written to on/after that day can't contain a line timestamped that day.
 - It skips every transcript under the one project directory that every headless
@@ -60,10 +60,22 @@ For each `=== SESSION ===` block from Step 1:
   - **File path** — extract the repo name from the path (last path component before the `.jsonl` filename's parent folder, e.g. `-Users-alice-repos-billing-service` → `billing-service`)
   - **Turns** — the total turn count
   - **First / Last** — already in PDT
-  - **Excerpts** — read these and write a 2–4 sentence summary:
-    - What was the task or goal?
+  - **Excerpts** — read ALL of them, in order, not just the first handful. A long session's
+    excerpts aren't capped for a reason: the outcome, the decision, or a correction to something
+    said earlier is just as likely to sit near the end as the start, and reading them in order
+    means a later excerpt that revises or retracts an earlier one is seen and reflected, not
+    contradicted. Write the summary:
+    - **Typically 2–4 sentences.** But a session that genuinely covers multiple distinct,
+      significant threads of work (not just one task with several steps) needs a clause per
+      thread, even if that runs longer — compressing two unrelated pieces of real work into one
+      generic sentence to hit a length target loses exactly the information the time-entry
+      generator needs to split them.
+    - What was the task or goal (or goals, if there's more than one distinct thread)?
     - What happened — was it straightforward or did it involve debugging, errors, retries?
-    - What was the outcome?
+    - What was the outcome? Include a real finding surfaced along the way if there is one (a bug
+      a review caught, a correction the user or Claude made to an earlier claim, a decision
+      reversed) — these are often the most consequential part of a session and easy to compress
+      away by only looking at where a session started.
     - **Artifacts**: if the session published or updated a Claude artifact (Artifact tool calls,
       claude.ai/code/artifact URLs in the transcript), name the artifact(s) explicitly in the
       summary (e.g. "published the 'X — Discovery' artifact"). This matters downstream: artifact

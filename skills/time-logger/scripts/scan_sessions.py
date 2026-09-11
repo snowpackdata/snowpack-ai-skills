@@ -9,12 +9,36 @@ Output: structured text per session — stats + message excerpts for summarizati
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
 LOCAL_TZ = datetime.now().astimezone().tzinfo
+
+# Claude-Code-infrastructure noise (login/logout notices, context-compaction notices,
+# background-task pings) — syntactically identifiable, never work-signal, safe to drop before
+# an excerpt ever costs a token. Matched on the start of the message body specifically (not a
+# scan across the whole file) so a real message that happens to mention one of these in passing
+# is never affected.
+_BOILERPLATE_PREFIXES = ("<local-command-stdout>", "<local-command-caveat>", "<task-notification>")
+
+
+def _sentence_truncate(text: str, limit: int = 400, min_length: int = 200) -> str:
+    """Cut at the last sentence boundary before `limit` instead of a blind character cut, so a
+    truncated excerpt still ends on a complete thought. Measured on a real 277-excerpt session:
+    a blind text[:400] cut off ~20% of messages mid-sentence, silently losing the message's
+    actual conclusion. Falls back to the old hard cut when no boundary exists in the window
+    (e.g. one long run-on with no punctuation) — never grows past `limit`."""
+    if len(text) <= limit:
+        return text
+    window = text[:limit]
+    best = -1
+    for m in re.finditer(r"[.!?](?=\s|$)|\n\n", window):
+        if m.end() >= min_length:
+            best = m.end()
+    return text[:best].rstrip() if best > 0 else window
 
 
 def utc_dates_for_local_day(target_date: str) -> set:
@@ -106,8 +130,8 @@ def scan_file(filepath: str, target_date: str) -> Optional[dict]:
                     text = content
 
                 text = text.strip()
-                if text and not text.startswith("<command") and len(text) > 20:
-                    excerpts.append(f"[{t}] {text[:400]}")
+                if text and not text.startswith(("<command",) + _BOILERPLATE_PREFIXES) and len(text) > 20:
+                    excerpts.append(f"[{t}] {_sentence_truncate(text)}")
 
     except OSError:
         return None
@@ -120,8 +144,47 @@ def scan_file(filepath: str, target_date: str) -> Optional[dict]:
         "turns": turns,
         "first_ts": first_ts,
         "last_ts": last_ts,
-        "excerpts": excerpts[:30],
+        "excerpts": cap_excerpts(excerpts),
     }
+
+
+# A hard "first N" cap silently hides everything after N — for a long session, that's
+# specifically where outcomes/decisions/corrections tend to live, not where they're absent.
+# Measured against a real 277-excerpt/53KB session: the whole thing is ~13k tokens, nowhere
+# close to a context-window problem, so there's no need to cap at all in the normal case —
+# only guard the pathological one (a genuinely enormous session) with a character budget, and
+# if that budget is ever exceeded, keep both ends (first half + last half of the budget)
+# instead of only the start, so a forced truncation doesn't reintroduce the same bias.
+EXCERPT_CHAR_BUDGET = 150_000
+
+
+def cap_excerpts(excerpts: list) -> list:
+    total = sum(len(e) for e in excerpts)
+    if total <= EXCERPT_CHAR_BUDGET:
+        return excerpts
+
+    half = EXCERPT_CHAR_BUDGET // 2
+    head, head_len = [], 0
+    for e in excerpts:
+        if head_len + len(e) > half:
+            break
+        head.append(e)
+        head_len += len(e)
+
+    tail, tail_len = [], 0
+    for e in reversed(excerpts):
+        if tail_len + len(e) > half:
+            break
+        tail.append(e)
+        tail_len += len(e)
+    tail.reverse()
+
+    # Avoid duplicating an excerpt that ended up in both the head and tail passes.
+    overlap = max(0, len(head) + len(tail) - len(excerpts))
+    if overlap:
+        tail = tail[overlap:]
+
+    return head + ["[... excerpts omitted: session exceeds the character budget ...]"] + tail
 
 
 def main():
