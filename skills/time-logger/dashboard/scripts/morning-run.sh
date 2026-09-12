@@ -64,8 +64,9 @@ You are running with an explicit tool allowlist: file tools, subagents, node/pyt
 3. Refresh: fetch today's Slack and Calendar into $DATA_HOME/raw/, write the daily digest by following $SKILL_DIR/references/summary.md with the focus 'daily digest' (its preset section) — it saves $DATA_HOME/summaries/${TODAY}_daily-digest.md and skips delivery, write $DATA_HOME/dashboard/data/slack_conversations.json per step 2b of $SKILL_DIR/references/dash-refresh.md, run node $APP/scripts/fetch-github-prs.mjs, then node $APP/scripts/render.mjs. Skip the artifacts section (the Artifact tool is not in the allowlist). Do not run 'open'.
 4. Final output: a short plain-text summary — days backfilled, feedback items applied/left pending, any source that failed, and any tool call that was denied." \
   --allowedTools "${ALLOWED[@]}" \
-  --output-format text < /dev/null >> "$LOG" 2>&1
-rc=$?
+  --output-format stream-json --verbose < /dev/null 2>>"$LOG" \
+  | python3 "$APP/scripts/format-stream-log.py" >> "$LOG"
+rc=${pipestatus[1]}
 log "morning run exit=$rc"
 
 # Belt and braces: make sure the store is rendered and the server is up even if the run died.

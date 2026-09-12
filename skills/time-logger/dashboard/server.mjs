@@ -47,6 +47,7 @@ const JOBS = {
   feedback: join(ROOT, 'scripts', 'feedback-run.sh'),
 };
 const jobRuns = {}; // name -> { running, started_at, exit_code, finished_at }
+const LOGS_DIR = join(DATA_HOME, 'dashboard', 'logs'); // one <name>.log per job, same key as JOBS
 
 async function serveFile(res, path) {
   try {
@@ -115,6 +116,24 @@ const server = createServer(async (req, res) => {
     });
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ ok: true, job: name }));
+  }
+
+  // Log snapshot for a job: GET /api/logs/<name>?lines=N — a manual, on-demand tail, not a
+  // live stream. Same job names as JOBS/jobRuns, so the UI can pair a "view logs" button with
+  // whichever run status it's already showing.
+  if (path.startsWith('/api/logs/') && req.method === 'GET') {
+    const name = path.slice('/api/logs/'.length);
+    if (!JOBS[name]) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, error: `unknown job: ${name}` }));
+    }
+    const n = Math.min(Math.max(Number(url.searchParams.get('lines')) || 200, 1), 1000);
+    let text = '';
+    try { text = await readFile(join(LOGS_DIR, `${name}.log`), 'utf8'); }
+    catch { /* no log written yet */ }
+    const tail = text.split('\n').slice(-n).join('\n');
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify({ name, text: tail, running: !!jobRuns[name]?.running, fetched_at: new Date().toISOString() }));
   }
 
   // Reviewed days: dates the user has signed off on in the UI.

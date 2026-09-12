@@ -256,6 +256,43 @@ function useJobs() {
   return { jobs, trigger };
 }
 
+// A manual snapshot of a job's log, not a live stream — open it, optionally hit Refresh to
+// pull the latest tail while the job is still running, close it, done.
+function LogModal({ name, onClose }) {
+  const [text, setText] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [fetchedAt, setFetchedAt] = useState(null);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`/api/logs/${name}?lines=300`);
+      const json = await r.json();
+      setText(json.text || '(no log written yet)');
+      setFetchedAt(json.fetched_at);
+    } catch {
+      setText('Could not load the log.');
+    } finally {
+      setLoading(false);
+    }
+  }, [name]);
+  useEffect(() => { load(); }, [load]);
+  const onKeyDown = (e) => { if (e.key === 'Escape') onClose(); };
+  return (
+    <div className="modal-backdrop" onClick={onClose} onKeyDown={onKeyDown} tabIndex={-1} ref={(el) => el?.focus()}>
+      <div className="modal log-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>{name} log</h2>
+          <span className="spacer" />
+          <button className="btn ghost" onClick={load} disabled={loading}><Icon name="refresh" />Refresh</button>
+          <button className="icon-btn" onClick={onClose} title="Close"><Icon name="x" /></button>
+        </div>
+        <pre className="log-view">{text}</pre>
+        {fetchedAt && <p className="small dim">Last fetched {ageLabel(fetchedAt)}{loading ? ' — loading…' : ''}</p>}
+      </div>
+    </div>
+  );
+}
+
 function useHashTab() {
   const get = () => {
     const t = window.location.hash.replace(/^#\/?/, '');
@@ -912,6 +949,7 @@ export default function App() {
   const { pending, submit, remove } = usePendingFeedback();
   const { jobs, trigger } = useJobs();
   const [tab, setTab] = useHashTab();
+  const [logJob, setLogJob] = useState(null); // job name whose log modal is open, or null
 
   const tiles = useMemo(() => {
     const days = store.time_entries?.data?.days || [];
@@ -956,29 +994,39 @@ export default function App() {
           ))}
         </nav>
         <div className="side-foot">
-          <button className="act" disabled={jobs.refresh?.running} onClick={() => trigger('refresh')}
-            title="Refetch today's sources, redraft today's entries, re-render (same script as the scheduled refresh)">
-            <Icon name="refresh" /><span>{jobs.refresh?.running ? 'Refreshing…' : 'Refresh'}</span>
-            {jobs.refresh?.finished_at && !jobs.refresh?.running && <span className="sub">{ageLabel(jobs.refresh.finished_at)}</span>}
-          </button>
-          <button className="act" disabled={jobs.morning?.running} onClick={() => trigger('morning')}
-            title="Run the full headless morning flow (same script as the 6:45 job)">
-            <Icon name="sun" /><span>{jobs.morning?.running ? 'Running…' : 'Morning run'}</span>
-            {jobs.morning?.finished_at && !jobs.morning?.running && <span className="sub">{ageLabel(jobs.morning.finished_at)}</span>}
-          </button>
-          <button className="act" disabled={jobs.feedback?.running || applicable === 0} onClick={() => trigger('feedback')}
-            title={applicable === 0
-              ? 'No time-entry or todo comments queued'
-              : `Apply ${applicable} queued comment${applicable === 1 ? '' : 's'} to the markdown (same as /time-logger feedback, minus PR actions)`}>
-            <Icon name="comment" /><span>{jobs.feedback?.running ? 'Applying…' : 'Apply comments'}</span>
-            {applicable > 0 && !jobs.feedback?.running && <span className="sub attention">{applicable}</span>}
-            {applicable === 0 && jobs.feedback?.finished_at && <span className="sub">{ageLabel(jobs.feedback.finished_at)}</span>}
-          </button>
+          <div className="act-row">
+            <button className="act" disabled={jobs.refresh?.running} onClick={() => trigger('refresh')}
+              title="Refetch today's sources, redraft today's entries, re-render (same script as the scheduled refresh)">
+              <Icon name="refresh" /><span>{jobs.refresh?.running ? 'Refreshing…' : 'Refresh'}</span>
+              {jobs.refresh?.finished_at && !jobs.refresh?.running && <span className="sub">{ageLabel(jobs.refresh.finished_at)}</span>}
+            </button>
+            <button className="log-btn" onClick={() => setLogJob('refresh')} title="View the refresh log"><Icon name="doc" /></button>
+          </div>
+          <div className="act-row">
+            <button className="act" disabled={jobs.morning?.running} onClick={() => trigger('morning')}
+              title="Run the full headless morning flow (same script as the 6:45 job)">
+              <Icon name="sun" /><span>{jobs.morning?.running ? 'Running…' : 'Morning run'}</span>
+              {jobs.morning?.finished_at && !jobs.morning?.running && <span className="sub">{ageLabel(jobs.morning.finished_at)}</span>}
+            </button>
+            <button className="log-btn" onClick={() => setLogJob('morning')} title="View the morning-run log"><Icon name="doc" /></button>
+          </div>
+          <div className="act-row">
+            <button className="act" disabled={jobs.feedback?.running || applicable === 0} onClick={() => trigger('feedback')}
+              title={applicable === 0
+                ? 'No time-entry or todo comments queued'
+                : `Apply ${applicable} queued comment${applicable === 1 ? '' : 's'} to the markdown (same as /time-logger feedback, minus PR actions)`}>
+              <Icon name="comment" /><span>{jobs.feedback?.running ? 'Applying…' : 'Apply comments'}</span>
+              {applicable > 0 && !jobs.feedback?.running && <span className="sub attention">{applicable}</span>}
+              {applicable === 0 && jobs.feedback?.finished_at && <span className="sub">{ageLabel(jobs.feedback.finished_at)}</span>}
+            </button>
+            <button className="log-btn" onClick={() => setLogJob('feedback')} title="View the feedback-apply log"><Icon name="doc" /></button>
+          </div>
           {tiles.unresolvedPr > 0 && (
             <p className="side-note">{tiles.unresolvedPr} PR comment{tiles.unresolvedPr === 1 ? '' : 's'} need an interactive <code>/time-logger feedback</code>.</p>
           )}
         </div>
       </aside>
+      {logJob && <LogModal name={logJob} onClose={() => setLogJob(null)} />}
 
       <main className="main">
         <div className="main-inner">

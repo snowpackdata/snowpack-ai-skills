@@ -72,8 +72,9 @@ cd "$APP"
 3. Run 'python3 $DATA_HOME/scripts/check_draft_freshness.py check $TODAY'. If its \"skip\" field is true, note 'draft: unchanged — skipped' and do not spawn generate-time-entry. Otherwise spawn generate-time-entry for $TODAY — it merges with $DATA_HOME/time_logs/time_entries_${TODAY//-/}.md if that exists, never overwriting entries already there, only adding or extending — then run 'python3 $DATA_HOME/scripts/check_draft_freshness.py record $TODAY'. Either way, then build the combined file per $SKILL_DIR/references/combined-file.md (raw sections + Recommended Time Log Structure) — this is cheap file concatenation, not an extra fetch or draft, so it always runs. Do NOT upload or submit anything.
 4. Final output: one line per source, 'slack: <n> messages' / 'calendar: <n> events' / 'claude: <n> sessions' / 'github: <n> items' / 'granola: <n> meetings' or the error, then 'conversations: <n> (<m> need follow-up)', then one line 'draft: <hours>h across <n> entries' or the error." \
   --allowedTools "${ALLOWED[@]}" \
-  --output-format text < /dev/null >> "$LOG" 2>&1
-rc=$?
+  --output-format stream-json --verbose < /dev/null 2>>"$LOG" \
+  | python3 "$APP/scripts/format-stream-log.py" >> "$LOG"
+rc=${pipestatus[1]}
 log "claude fetch exit=$rc"
 
 node "$APP/scripts/fetch-github-prs.mjs" >> "$LOG" 2>&1 || log "WARN: github PR fetch failed"

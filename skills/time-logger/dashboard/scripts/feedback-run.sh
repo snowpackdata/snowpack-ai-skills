@@ -44,8 +44,9 @@ cd "$APP"
 - After editing, if a time-entry file changed and today's daily digest summarizes it, re-run the 'summary daily digest' preset from $SKILL_DIR/references/summary.md; then run node $APP/scripts/render.mjs.
 - Final output: one line per comment — applied (what changed) or left pending (why)." \
   --allowedTools "${ALLOWED[@]}" \
-  --output-format text < /dev/null >> "$LOG" 2>&1
-rc=$?
+  --output-format stream-json --verbose < /dev/null 2>>"$LOG" \
+  | python3 "$APP/scripts/format-stream-log.py" >> "$LOG"
+rc=${pipestatus[1]}
 log "claude exit=$rc"
 node "$APP/scripts/render.mjs" >> "$LOG" 2>&1 || log "WARN: render failed"
 log "feedback run end"
