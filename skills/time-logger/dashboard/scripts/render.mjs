@@ -5,6 +5,7 @@
 import { readFile, writeFile, readdir, mkdir, rename, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DATA_HOME, uiConfig } from './capabilities.mjs';
+import { parseTodosFile } from './todo-format.mjs';
 
 // Dynamic state lives in the data home; this folder holds only code.
 const DATA = join(DATA_HOME, 'dashboard', 'data');
@@ -144,35 +145,30 @@ async function renderTimeEntries() {
 }
 
 // ---- todos: dashboard.todos_file in capabilities.yml (optional) ----------
-// Line shape:  - [ ] [TICKET-123] text **(HIGH)** #slack #reply https://...slack.com/archives/...
-// `[TICKET-123]` → kind "jira"; otherwise kind "local". `#tags` are free-form (#slack, #pr,
-// #reply, #research …). Ticket IDs and links are what evidence attaches to.
+// Schema v2 (see ../../todo/CHANGELOG.md and ./todo-format.mjs): a `todos:` list of flat
+// items, each with `state`, `backend`, `id`, `project`, `text`, `url`, `group`, `priority`,
+// `created`, `done`, `notes`. `backend: jira` → kind "jira" (links via client.jira_browse_url);
+// anything else → kind "local". `project` is shown as this item's one tag.
 //
-// Grouping is deliberately loose so nothing that writes this file (e.g. the `todo` skill) has
-// to know this dashboard's display conventions: an explicit `### Group` heading names a group
-// as before, but isn't required — an item with none falls back to its own first `#tag` (or
-// "Ungrouped"). Groups merge by name across the whole file, regardless of which `## state`
-// section they appear under, so a project split across e.g. Pending/In Progress sections still
-// renders as one group. "Done"-ness is purely per item (the `[x]` checkbox) — a group is only
-// omitted entirely once every item in it is done.
+// Grouping: an item's `group` field names a group explicitly if set, else its `project` is
+// used, so nothing that writes this file has to know this dashboard's display conventions.
+// Groups merge by name across the whole file regardless of each item's `state`, so a project
+// split across pending/in-progress items still renders as one group. "Done"-ness is purely
+// per item (`state: done`) — a group is only omitted entirely once every item in it is done.
 const SLACK_LINK_RE = /https?:\/\/[a-z0-9-]+\.slack\.com\/archives\/[^\s)>\]]+/gi;
 const PR_LINK_RE = /https?:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)/gi;
 
-function parseTodoLine(text) {
-  const links = text.match(URL_RE) || [];
-  const ticket = (text.match(/\[([A-Z]{2,}-\d+)\]/) || [])[1] || null;
-  const tags = [...text.matchAll(/(?:^|\s)#([a-z][a-z0-9-]*)/gi)].map((m) => m[1].toLowerCase());
-  const prs = [...text.matchAll(PR_LINK_RE)].map((m) => `${m[1]}#${m[2]}`);
-  const slack_links = text.match(SLACK_LINK_RE) || [];
+function todoFields(item) {
+  const url = item.url || null;
   return {
-    text,
-    ticket,
-    kind: ticket ? 'jira' : 'local',
-    tags,
-    priority: ((text.match(/\*\*\((HIGH|MEDIUM|LOW)\)\*\*/i) || [])[1] || '').toLowerCase() || null,
-    links,
-    pr_keys: prs,
-    slack_links,
+    text: item.text || '',
+    ticket: item.backend === 'jira' ? String(item.id).replace(/^jira:/, '') : null,
+    kind: item.backend === 'jira' ? 'jira' : 'local',
+    tags: item.project ? [item.project] : [],
+    priority: item.priority || null,
+    links: url ? [url] : [],
+    pr_keys: url ? [...url.matchAll(PR_LINK_RE)].map((m) => `${m[1]}#${m[2]}`) : [],
+    slack_links: url ? (url.match(SLACK_LINK_RE) || []) : [],
   };
 }
 
@@ -208,8 +204,9 @@ function todoEvidence(todo, ctx) {
 }
 
 async function renderTodos(ctx) {
-  const md = CONFIG.todos_file ? await read(CONFIG.todos_file) : null;
-  if (!md) return { generated_at: NOW, status: 'missing', data: { groups: [] } };
+  const raw = CONFIG.todos_file ? await read(CONFIG.todos_file) : null;
+  if (!raw) return { generated_at: NOW, status: 'missing', data: { groups: [] } };
+  const { todos: items } = parseTodosFile(raw);
   const groupsByName = new Map();
   const order = [];
   const getGroup = (name) => {
@@ -217,17 +214,11 @@ async function renderTodos(ctx) {
     if (!g) { g = { name, items: [] }; groupsByName.set(name, g); order.push(name); }
     return g;
   };
-  let explicitGroup = null;
-  for (const line of md.split('\n')) {
-    if (/^## /.test(line)) { explicitGroup = null; continue; } // new state section — heading resets
-    const h3 = line.match(/^### (.+)/);
-    if (h3) { explicitGroup = getGroup(h3[1].trim()); continue; }
-    const item = line.match(/^- \[([ xX])\] (.+)/);
-    if (!item) continue;
-    const todo = parseTodoLine(item[2].trim());
-    const done = item[1] !== ' ';
-    const entry = { done, ...todo, ...(done ? { evidence: [], suggest_done: false } : todoEvidence(todo, ctx)) };
-    (explicitGroup || getGroup(todo.tags[0] || 'Ungrouped')).items.push(entry);
+  for (const item of items) {
+    const done = item.state === 'done';
+    const todo = todoFields(item);
+    const entry = { id: item.id, done, ...todo, ...(done ? { evidence: [], suggest_done: false } : todoEvidence(todo, ctx)) };
+    getGroup(item.group || item.project || 'Ungrouped').items.push(entry);
   }
   const groups = order.map((name) => groupsByName.get(name)).filter((g) => g.items.some((t) => !t.done));
   return { generated_at: NOW, status: 'ok', data: { groups } };

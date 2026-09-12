@@ -55,27 +55,26 @@ Proceed? (yes / edit)
 - Apply the project's `label:`, if set — immediately after creation via an edit call if the
   create call doesn't accept a `labels` field directly.
 
-**4. Return** id `[<PROJECT_KEY>-<n>]` — bracket form, which is what `time-logger` already
-recognizes as a ticket kind; don't reuse the bracket form for any other backend — and the browse
-URL (`<site>/browse/<PROJECT_KEY>-<n>`) for the flat file line.
+**4. Return** id `jira:<PROJECT_KEY>-<n>` (the uniform `<backend>:<opaque>` id grammar every
+backend uses) and the browse URL (`<site>/browse/<PROJECT_KEY>-<n>`) for the new item.
 
 ## List
 
-For one id `[<PROJECT_KEY>-<n>]`, look up its current status (by key, or JQL `key =
+For one id `jira:<PROJECT_KEY>-<n>`, look up its current status (by key, or JQL `key =
 <PROJECT_KEY>-<n>`) and read `status`/`statusCategory`. Report a `Done`-category status as done —
-this is what lets `/todo list` self-heal a line resolved directly in Jira instead of through
+this is what lets `/todo list` self-heal an item resolved directly in Jira instead of through
 `/todo done`. Report the current summary in case it changed. If the lookup errors, say so plainly
 rather than guessing.
 
 ## Discover
 
-Read-only — finds issues assigned to you in this project that aren't in the flat file yet:
+Read-only — finds issues assigned to you in this project that aren't in the file yet:
 
 ```
 project = <PROJECT_KEY> AND assignee = currentUser() AND statusCategory != Done ORDER BY priority DESC
 ```
 
-Return each as `{id: [<PROJECT_KEY>-<n>], title, url}` for `/todo list` to import; never write
+Return each as `{id: jira:<PROJECT_KEY>-<n>, title, url}` for `/todo list` to import; never write
 anything here.
 
 ## Complete

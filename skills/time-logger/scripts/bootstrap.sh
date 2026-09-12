@@ -4,7 +4,8 @@
 # 1. Resolves the data home and creates its tree.
 # 2. Migrates data from the pre-data-home location (~/repos/time_logs) once, if found.
 # 3. Installs the bundled subagents into ~/.claude/agents/ (Claude Code can't discover them
-#    inside a skill folder) and copies scan_sessions.py where the sessions agent expects it.
+#    inside a skill folder) and copies the operational scripts (scan_sessions.py and friends,
+#    update-todo.mjs) where they're expected.
 # 4. Seeds capabilities.yml / user-preferences.md from the examples if missing.
 # 5. Syncs + builds the dashboard into <data home>/app/dashboard when its source changed.
 # 6. Prints a compact status block the model reads before dispatching.
@@ -48,6 +49,8 @@ if [ -n "$SKILL_DIR" ] && [ -d "$SKILL_DIR/.claude/agents" ]; then
   cp "$SKILL_DIR/scripts/check_week_continuity.py" "$DATA_HOME/scripts/check_week_continuity.py"
   cp "$SKILL_DIR/scripts/check_draft_freshness.py" "$DATA_HOME/scripts/check_draft_freshness.py"
   cp "$SKILL_DIR/scripts/snap_entry_times.py" "$DATA_HOME/scripts/snap_entry_times.py"
+  cp "$SKILL_DIR/scripts/todo-format.mjs" "$DATA_HOME/scripts/todo-format.mjs"
+  cp "$SKILL_DIR/scripts/update-todo.mjs" "$DATA_HOME/scripts/update-todo.mjs"
   [ -f "$DATA_HOME/capabilities.yml" ] || cp "$SKILL_DIR/capabilities.example.yml" "$DATA_HOME/capabilities.yml"
   [ -f "$DATA_HOME/user-preferences.md" ] || cp "$SKILL_DIR/user-preferences.example.md" "$DATA_HOME/user-preferences.md"
   # Remember where the skill lives so the headless launchd scripts can find agent/reference docs.

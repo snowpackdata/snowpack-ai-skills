@@ -73,8 +73,9 @@ Then collect the **client** block (show current values when reconfiguring):
 - `jira_browse_url` — ticket-link base, e.g. `https://acme.atlassian.net/browse/`
 - `standup_channel_id` — Slack channel whose posts set the standup style
 
-And the **dashboard** block: enabled?, port (default 4680), optional `todos_file` (a markdown
-list rendered on the Overview tab; blank hides the panel).
+And the **dashboard** block: enabled?, port (default 4680), optional `todos_file` (a YAML todo
+store, schema v2 — see `../../todo/CHANGELOG.md` — rendered on the Overview tab; blank hides the
+panel).
 
 Then the **submit** block. Ask: "How do you submit time on this machine?" and offer:
 - **Cronos** — copy `<skill_dir>/submit-instructions.examples/cronos.md`. Probe first by

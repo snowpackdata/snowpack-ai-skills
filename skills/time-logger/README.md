@@ -143,15 +143,15 @@ Overview's daily digest is the same flow with a fixed `daily digest` focus, save
 
 ## Todos
 
-If `dashboard.todos_file` names a markdown list, the Overview tab renders it. Each `- [ ]` line
-is either a **Jira** todo (`[PROJ-123]`, linked through `jira_browse_url`) or a **local** one,
-and can carry free-form `#tags` (`#slack`, `#pr`, `#reply`) and links. On every render the
-dashboard attaches **evidence** to open items: time entries whose ticket or text cites the
-todo, PRs that name the ticket or are linked from it (with open / draft / merged / closed
-state), and Slack messages that mention either. An item with a merged PR or logged time gets
-a ✓ evidence chip. Nothing is closed automatically — the chip is there so you can comment
-"done — close it" on the dashboard and let `/time-logger feedback` flip the box, citing the
-proof in the completion note.
+If `dashboard.todos_file` names a [`todo` skill](../todo/README.md) v2 YAML file, the Overview
+tab renders it. Each item is either a **Jira** todo (`backend: jira`, linked through
+`jira_browse_url`) or a **local** one, tagged by its `project`. On every render the dashboard
+attaches **evidence** to open items: time entries whose id or link cites the todo, PRs that
+name it or are linked from it (with open / draft / merged / closed state), and Slack messages
+that mention either. An item with a merged PR or logged time gets a ✓ evidence chip. Nothing
+is closed automatically — the chip is there so you can comment "done — close it" on the
+dashboard and let `/time-logger feedback` mark it done (via `update-todo.mjs`, a deterministic
+patch by id), citing the proof in the appended note.
 
 ## Client-specific config
 

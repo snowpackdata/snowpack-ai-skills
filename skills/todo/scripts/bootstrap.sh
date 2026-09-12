@@ -27,12 +27,16 @@ CAPS="$DATA_HOME/capabilities.yml"
 if [ -f "$CAPS" ]; then
   todos_file=$(grep -m1 'todos_file:' "$CAPS" | sed 's/^[^:]*: *//')
   todos_file="${todos_file/#\~/$HOME}"
-  echo "todos_file: ${todos_file:-$HOME/.claude/todos.md}"
+  echo "todos_file: ${todos_file:-$HOME/.claude/todos.yaml}"
   if [ -f "$todos_file" ]; then
-    pending=$(awk '/^## Pending/{f=1;next} /^## /{f=0} f && /^- \[ \]/{c++} END{print c+0}' "$todos_file")
-    inprog=$(awk '/^## In Progress/{f=1;next} /^## /{f=0} f && /^- \[ \]/{c++} END{print c+0}' "$todos_file")
-    done=$(awk '/^## Done/{f=1;next} /^## /{f=0} f && /^- \[x\]/{c++} END{print c+0}' "$todos_file")
-    echo "todos: $pending pending, $inprog in progress, $done done"
+    if grep -q '^todos:' "$todos_file"; then
+      pending=$(grep -c '^    state: pending' "$todos_file")
+      inprog=$(grep -c '^    state: in_progress' "$todos_file")
+      done=$(grep -c '^    state: done' "$todos_file")
+      echo "todos: $pending pending, $inprog in progress, $done done"
+    else
+      echo "todos_file: v1 format detected — run /todo migrate before any other command"
+    fi
   else
     echo "todos: file does not exist yet — first /todo <text> creates it"
   fi

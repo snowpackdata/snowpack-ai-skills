@@ -27,7 +27,7 @@ gh issue create --repo <owner/repo> --title "<text>" --body ""
 ```
 
 `gh` prints the created issue's URL — parse the trailing number as `<n>`. Return id
-`gh:<owner/repo>#<n>` and that URL for the flat file line.
+`gh:<owner/repo>#<n>` and that URL for the new item.
 
 ## List
 
@@ -38,13 +38,13 @@ gh issue view <n> --repo <owner/repo> --json state,title,url
 ```
 
 `state` is `OPEN` or `CLOSED`. Report `CLOSED` as done (this is what lets `/todo list` self-heal
-a line the user closed directly on GitHub instead of through `/todo done`); report the current
+an item the user closed directly on GitHub instead of through `/todo done`); report the current
 `title` in case it changed. If the call errors (deleted issue, no access), report that plainly
 rather than guessing a state.
 
 ## Discover
 
-Read-only — finds issues that exist in this repo but aren't in the flat file yet, so `/todo
+Read-only — finds issues that exist in this repo but aren't in the file yet, so `/todo
 list` can import them. "Yours" means assigned to you **or** authored by you; `gh` can't OR
 those in one call, so run both and merge by issue number:
 
@@ -55,7 +55,7 @@ gh issue list --repo <owner/repo> --state open --author @me --json number,title,
 
 Union the two result sets on `number` (an issue matching both counts once). Return each as
 `{id: gh:<owner/repo>#<number>, title, url}` for `/todo list` to compare against what's already
-tracked. Never write anything here — importing the line is `/todo list`'s job, not this file's.
+tracked. Never write anything here — importing the item is `/todo list`'s job, not this file's.
 
 ## Complete
 

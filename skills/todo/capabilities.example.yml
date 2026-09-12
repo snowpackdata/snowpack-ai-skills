@@ -6,11 +6,11 @@
 
 settings:
   data_home: ~/.local/share/todo
-  # The flat file every backend writes into. Defaults to the same path time-logger's
-  # dashboard reads as `dashboard.todos_file` — if you use both skills, todos created here
-  # show up on its Overview tab automatically, with PR/time-entry evidence, with zero extra
-  # config. Change it if you'd rather keep the two separate.
-  todos_file: ~/.claude/todos.md
+  # The YAML file every backend writes into (schema v2 — see CHANGELOG.md). Defaults to the
+  # same path time-logger's dashboard reads as `dashboard.todos_file` — if you use both
+  # skills, todos created here show up on its Overview tab automatically, with PR/time-entry
+  # evidence, with zero extra config. Change it if you'd rather keep the two separate.
+  todos_file: ~/.claude/todos.yaml
 
 backends:
   # Always on — the fallback when a project has no mapping, or maps to "local" explicitly.

@@ -20,18 +20,18 @@ with no identifier recorded, ask once and remember it (see Remember, below).>
 <Exactly what to call to create one item, and what fields to set (title, description, labels
 — keep it minimal; a todo isn't a full ticket). Show the user what will be created and ask for
 explicit confirmation first. Return the id (`<backend>:<identifier>`) and a canonical URL, if
-one exists, for the flat file line.>
+one exists, for the new item.>
 
 ## List
 
 <How to check current status for one id — read-only, no writes. Return at least: still open or
 closed/done, and the current title if it can have changed. `/todo list` uses this to self-heal
-the flat file when something was closed directly in this backend instead of through `/todo
+the file when something was closed directly in this backend instead of through `/todo
 done`.>
 
 ## Discover (optional)
 
-<How to find items that exist in this backend but aren't in the flat file yet — e.g. something
+<How to find items that exist in this backend but aren't in the file yet — e.g. something
 filed directly there instead of through `/todo add`. Read-only: return each as `{id, title,
 url}` for `/todo list` to import; never write anything here. Skip this section entirely if the
 backend has no sensible "everything of mine" query.>

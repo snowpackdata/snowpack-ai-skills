@@ -5,10 +5,13 @@
 <!-- STATUS:END -->
 
 A quick, frictionless todo list that also knows when a task deserves a real ticket. Everything
-lives in one flat markdown file — most todos just go there, but a todo for a project you've
-mapped to a backend (GitHub Issues or Jira) gets created there instead, and still shows up in
-the same merged list. `/todo list` re-checks backend-tracked items live, so a todo closed
-directly in GitHub or Jira shows as done here too, without you having to say so twice.
+lives in one YAML file — most todos just go there, but a todo for a project you've mapped to a
+backend (GitHub Issues or Jira) gets created there instead, and still shows up in the same
+merged list. `/todo list` re-checks backend-tracked items live, so a todo closed directly in
+GitHub or Jira shows as done here too, without you having to say so twice.
+
+**v2 note:** the file is YAML now (was markdown through v1), with no dual-format support.
+Upgrading from v1? Run `/todo migrate` once — see `CHANGELOG.md`.
 
 ## Install
 
@@ -34,12 +37,13 @@ new todos to GitHub Issues, Jira, or the local file.
 /todo done <id>            mark complete, closing the backend ticket too, after confirming
 /todo list [project|all]   list todos; defaults to the auto-detected project, `all` shows everything
 /todo setup                configure projects and backends
-/todo status               what's configured, where the flat file lives, open/done counts
+/todo migrate              convert an existing v1 (markdown) file to the v2 YAML schema
+/todo status               what's configured, where the file lives, open/done counts
 ```
 
 If you also use [`time-logger`](../time-logger/README.md), todos created here appear on its
-Overview dashboard automatically — both skills default to the same flat file
-(`~/.claude/todos.md`).
+Overview dashboard automatically — both skills default to the same file
+(`~/.claude/todos.yaml`).
 
 ## Author
 

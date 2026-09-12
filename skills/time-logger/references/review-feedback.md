@@ -1,19 +1,19 @@
 # /time-logger feedback
 
-Applies comments the user left in the Morning Dashboard UI back to the markdown sources of
-truth, then re-renders the store. Paths are relative to the data home
-(`~/.local/share/time-logger/`, or `$TIME_LOGGER_DATA_HOME`).
+Applies comments the user left in the Morning Dashboard UI back to their sources of truth
+(markdown for time entries and PRs, YAML for todos), then re-renders the store. Paths are
+relative to the data home (`~/.local/share/time-logger/`, or `$TIME_LOGGER_DATA_HOME`).
 
 Drains `dashboard/feedback/pending.json`. Three item types:
 - `type: "time_entry_comment"` — `{ id, date, heading, comment, submitted_at }` where
   `heading` matches a `### ` block in `time_logs/time_entries_YYYYMMDD.md`.
 - `type: "pr_comment"` — `{ id, pr, url, title, comment, submitted_at }` where `pr` is
   `owner/repo#number`.
-- `type: "todo_comment"` — `{ id, todo_key, group, ticket, text, comment, submitted_at }`
-  where `group` is the group name shown on the dashboard for that item — a literal `### `
-  section in `dashboard.todos_file` (from `capabilities.yml`) if one exists there, otherwise a
-  label the renderer derived from the item's own first `#tag` (no `### ` heading to find in
-  that case) — and `ticket`/`text` identify the `- [ ]` line.
+- `type: "todo_comment"` — `{ id, todo_key, group, ticket, text, comment, submitted_at }` where
+  `todo_key` is that item's `id` field in `dashboard.todos_file` (from `capabilities.yml`) —
+  the same id `/todo done <id>` uses — and `group`/`ticket`/`text` are its `group` (or
+  `project`, if `group` is unset), `id` again if `backend: jira`, and `text` at the time the
+  comment was left, for display only.
 
 ## Steps
 
@@ -62,9 +62,10 @@ no outward-facing tools; `pr_comment` items always wait for an interactive run.
      confirmation is fine), then close via the API — NOT `gh pr close`, which fails silently
      when run outside a git repo: `gh api -X PATCH repos/<owner/repo>/pulls/<number> -f
      state=closed -q .state` (prints `closed` on success — treat any other output as failure).
-   - "add to my todos" / "remind me" / "revisit later" → add an item to the todos file
-     (include the PR link), no GitHub action. If no todos file is configured, add it to the
-     latest time-entry file's Open Items instead.
+   - "add to my todos" / "remind me" / "revisit later" → append a new item to the todos file
+     (`state: pending`, `backend: local`, `url:` the PR link — see `../../todo/SKILL.md`'s file
+     format), no GitHub action. If no todos file is configured, add it to the latest
+     time-entry file's Open Items instead.
    - "comment on the PR: ..." / "reply to reviewer" → post it:
      `gh pr comment <number> -R <owner/repo> -b "<text>"`.
    - "rebase" / "un-draft" / "fix CI" / other code work → do NOT attempt it inside this
@@ -73,23 +74,27 @@ no outward-facing tools; `pr_comment` items always wait for an interactive run.
    Closing a PR and posting a GitHub comment are outward-facing — never do either without
    the comment unambiguously asking for it, and never in headless mode.
 
-4. **Todo comments** (only when `dashboard.todos_file` is configured): edit that file,
-   finding the `- [ ]` line by `ticket` or the start of `text` within the `group` section.
-   The item may carry `evidence` — time entries, PRs, and Slack messages the renderer found
-   citing the todo's ticket or links. It is a hint the user saw before commenting, never a
-   reason to close anything on its own.
-   - "mark done" / "this is done" / "done — close it" → flip to `- [x]` and append a
-     completion note with today's date, matching how existing completed items are written.
-     If `evidence` includes a merged PR or a logged time entry, cite it in the note
-     (`— done 2026-09-09, PR snowpackdata/cronos#367 merged`) so the proof travels with the
-     item. Never flip an item the user didn't comment on, however strong its evidence.
-   - "not done" / "still open" → leave it, add a short status note after the text.
-   - Priority change ("bump to HIGH", "deprioritize") → add/adjust the `**(HIGH)**` /
-     `**(LOW)**` marker.
-   - "reword: ..." / status update → rewrite the line, preserving ticket ID and links.
-   - "move to [group]" → relocate the line to that `### ` section (create it if named).
-   - "delete" / "not doing this" → remove the line entirely.
+4. **Todo comments** (only when `dashboard.todos_file` is configured): apply the change with
+   `<data home>/scripts/update-todo.mjs <todos_file> <todo_key> ...` — a deterministic patch by
+   `id`, not a hand-edit — rather than opening the YAML file yourself. The item may carry
+   `evidence` — time entries, PRs, and Slack messages the renderer found citing the todo's id or
+   link. It is a hint the user saw before commenting, never a reason to close anything on its
+   own.
+   - "mark done" / "this is done" / "done — close it" →
+     `update-todo.mjs <todos_file> <todo_key> --state done`, plus `--note "done
+     2026-09-09, PR snowpackdata/cronos#367 merged"` when `evidence` includes a merged PR or a
+     logged time entry, so the proof travels with the item (the script sets `done` to today
+     automatically). Never mark done an item the user didn't comment on, however strong its
+     evidence.
+   - "not done" / "still open" → `--note "<short status>"` only; no `--state` (leave it as-is).
+   - Priority change ("bump to HIGH", "deprioritize") → `--priority high` / `--priority low` /
+     `--priority none`.
+   - "reword: ..." / status update → `--text "<new text>"` (the id, backend, and url are
+     untouched — nothing to accidentally clobber, since they're separate fields).
+   - "move to [group]" → `--group "<name>"`.
+   - "delete" / "not doing this" → `update-todo.mjs <todos_file> <todo_key> --delete`.
    - "create a ticket for this" → outward-facing: confirm with the user first.
+   Flags combine in one call (e.g. `--state done --note "..."`); `--note` may repeat.
 
 5. **Archive processed items by explicit ID**: re-read `pending.json` fresh at this step
    (the user may have added new comments in the UI while you worked — never archive by type

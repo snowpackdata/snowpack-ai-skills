@@ -426,13 +426,9 @@ function EvidenceChip({ e }) {
 
 function TodoRow({ group, todo, pending, submit, remove }) {
   const [open, setOpen] = useState(false);
-  const key = todo.ticket || todo.text.slice(0, 60);
+  const key = todo.id;
   const fb = pending.filter((f) => f.type === 'todo_comment' && f.todo_key === key && !f.resolved);
-  const shown = todo.text
-    .replace(/\[[A-Z]{2,}-\d+\]\s*/, '')
-    .replace(/\*\*\((?:HIGH|MEDIUM|LOW)\)\*\*\s*/i, '')
-    .replace(/(?:^|\s)#[a-z][a-z0-9-]*/gi, '')
-    .trim();
+  const shown = todo.text;
   const evidence = todo.evidence || [];
   return (
     <div className={`todo-block ${todo.suggest_done ? 'has-evidence' : ''}`}>

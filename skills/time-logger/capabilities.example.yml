@@ -58,13 +58,14 @@ submit:
 dashboard:
   enabled: true
   port: 4680
-  # Optional markdown todo list rendered on the Overview tab. Blank or missing = panel hidden.
-  # Format: `## State` sections (Pending / Done), `### Group` headings, then one item per line:
-  #   - [ ] [PROJ-123] Reply to Sam about the export **(HIGH)** #slack https://acme.slack.com/archives/C0/p1
-  # `[TICKET]` marks a Jira todo (kind: jira; links via client.jira_browse_url); anything else is
-  # kind: local. `#tags` are free-form (#slack, #pr, #reply, #research). Ticket IDs and links are
-  # what evidence attaches to: the dashboard shows time entries, PRs, and Slack messages that
-  # cite them as proof the todo was worked — nothing is closed until you comment "done".
-  todos_file: ~/.claude/todos.md
+  # Optional YAML todo store rendered on the Overview tab. Blank or missing = panel hidden.
+  # Schema v2 (see ../todo/CHANGELOG.md): a `todos:` list of items, each with `state`
+  # (pending/in_progress/done), `backend` (local/github/jira/...), `id`, `project`, `text`,
+  # `url`, `group`, `priority`, `created`, `done`, `notes`. `backend: jira` marks a Jira todo
+  # (kind: jira; links via client.jira_browse_url); anything else is kind: local. `project` is
+  # shown as a tag. `url` and the id are what evidence attaches to: the dashboard shows time
+  # entries, PRs, and Slack messages that cite them as proof the todo was worked — nothing is
+  # closed until you comment "done".
+  todos_file: ~/.claude/todos.yaml
   # Set to true by `/time-logger dashboard install` once the launchd jobs are loaded.
   launchd: false
