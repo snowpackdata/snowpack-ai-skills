@@ -8,7 +8,8 @@ setup` copies one of these templates there when you enable a backend.
 | Template | Use when |
 |---|---|
 | `github-issues.md` | The project's repo is on GitHub and you use the `gh` CLI |
-| `TEMPLATE.md` | Something else — Jira, Linear, a private notes API, anything that counts as *tracking* a todo somewhere other than the flat file |
+| `jira.md` | The project tracks work in Jira, via an Atlassian MCP connector |
+| `TEMPLATE.md` | Something else — Linear, a private notes API, anything that counts as *tracking* a todo somewhere other than the flat file |
 
 ## Contract
 

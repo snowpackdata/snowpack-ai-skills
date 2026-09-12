@@ -6,9 +6,9 @@
 
 A quick, frictionless todo list that also knows when a task deserves a real ticket. Everything
 lives in one flat markdown file — most todos just go there, but a todo for a project you've
-mapped to a backend (currently GitHub Issues) gets created there instead, and still shows up in
+mapped to a backend (GitHub Issues or Jira) gets created there instead, and still shows up in
 the same merged list. `/todo list` re-checks backend-tracked items live, so a todo closed
-directly in GitHub shows as done here too, without you having to say so twice.
+directly in GitHub or Jira shows as done here too, without you having to say so twice.
 
 ## Install
 
@@ -22,8 +22,9 @@ Then, from any project:
 /todo setup
 ```
 
-Setup discovers your project/repo folders, checks whether the `gh` CLI is authenticated, and
-lets you confirm which projects should route new todos to GitHub Issues versus the local file.
+Setup discovers your project/repo folders, checks whether the `gh` CLI is authenticated (and
+whether an Atlassian connector is available), and lets you confirm which projects should route
+new todos to GitHub Issues, Jira, or the local file.
 
 ## Usage
 

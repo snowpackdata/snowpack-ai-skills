@@ -1,10 +1,10 @@
 ---
 name: todo
-description: Slash-command todo list. Run /todo to list open items, /todo <text> to add one, /todo done <id> to complete one, /todo setup to configure project mappings and backends, /todo status to see what's configured. Stores todos in one flat markdown file and routes each new one to a backend (a local line, or a connected system like GitHub Issues) based on which project/repo it belongs to, then merges everything back together when listing — a hybrid local + ticket-system todo list.
-summary: "/todo | /todo <text> | /todo done <id> | /todo setup — hybrid local + GitHub Issues todo list, routed by project."
+description: Slash-command todo list. Run /todo to list open items, /todo <text> to add one, /todo done <id> to complete one, /todo setup to configure project mappings and backends, /todo status to see what's configured. Stores todos in one flat markdown file and routes each new one to a backend (a local line, or a connected system like GitHub Issues or Jira) based on which project/repo it belongs to, then merges everything back together when listing — a hybrid local + ticket-system todo list.
+summary: "/todo | /todo <text> | /todo done <id> | /todo setup — hybrid local + GitHub Issues/Jira todo list, routed by project."
 owner: "@jarellano01"
 status: development
-notes: GitHub Issues backend only for now. Jira/Linear can be added later as a new file in todo-instructions.examples/, same shape as github-issues.md.
+notes: GitHub Issues and Jira backends ship. Linear can be added later as a new file in todo-instructions.examples/, same shape as github-issues.md/jira.md.
 argument-hint: "[text to add] | list [project|all] | done <id> | setup | status | help"
 disable-model-invocation: true
 ---
@@ -14,7 +14,7 @@ disable-model-invocation: true
 A quick, frictionless place to put a task, that also knows when a task deserves a real ticket.
 Everything lives in one flat markdown file, grouped into `## Pending`, `## In Progress`, and
 `## Done`. Most todos just live there. When a todo belongs to a project whose mapping says
-otherwise, `/todo add` creates it in that project's backend (currently: a GitHub issue) and
+otherwise, `/todo add` creates it in that project's backend (a GitHub issue or Jira issue) and
 still writes a line in the same flat file — with that issue's id and link — so `/todo list`
 always shows one merged list regardless of where each item actually lives, and its state is
 re-checked against the backend every time you list.
@@ -37,7 +37,7 @@ plain `#tag` is enough for it to group by; nothing here exists to satisfy its pa
 /todo                     list open + in-progress todos for the project you're in (or
                            everything, if you're not inside a mapped project)
 /todo <text>               add a todo — auto-routed to a backend by project mapping;
-                           flags: --project <name>, --backend local|github, --in-progress
+                           flags: --project <name>, --backend local|github|jira, --in-progress
 /todo done <id>            mark a todo complete; closes the backend ticket too, after confirming
 /todo list [project|all]   list todos; defaults to the auto-detected project, `all`
                            overrides that to show everything regardless of cwd
@@ -46,7 +46,7 @@ plain `#tag` is enough for it to group by; nothing here exists to satisfy its pa
 ```
 
 `<id>` is whatever `/todo list` prints next to the item: `t042` for a local todo,
-`gh:owner/repo#123` for a GitHub-backed one.
+`gh:owner/repo#123` for a GitHub-backed one, `[PROJ-123]` for a Jira-backed one.
 
 ## Bootstrap (runs automatically on every invocation)
 
@@ -70,7 +70,7 @@ The subcommand is `$0`; everything else is `$1..` (`$ARGUMENTS` for the full str
 | `list` | Run **List** below; `$1`, if present, is an explicit project filter that overrides auto-detection. |
 | `done` | Run **Done** below; `$1` is the id. |
 | `status` | Run **Status** below. |
-| anything else | Treat the full argument string as the todo text and run **Add** below. Pull `--project <name>`, `--backend local\|github`, and `--in-progress` out of the string first — they're flags, not part of the text. |
+| anything else | Treat the full argument string as the todo text and run **Add** below. Pull `--project <name>`, `--backend local\|github\|jira`, and `--in-progress` out of the string first — they're flags, not part of the text. |
 
 ## The flat file format
 
@@ -98,9 +98,9 @@ and is responsible for adapting to whatever it finds here — not the other way 
   `user-preferences.md`; a todo with no matching project is tagged `#unfiled` instead of
   silently going untagged.
 - `(id: t###)` — a local todo, `t` + an incrementing number (highest existing `t###` in the
-  file, plus one). `(id: gh:owner/repo#N)` — a GitHub issue. A future Jira todo would use the
-  bracket ticket form `[PROJ-123]` that `time-logger` already recognizes as a ticket kind —
-  don't reuse the bracket form for anything else.
+  file, plus one). `(id: gh:owner/repo#N)` — a GitHub issue. `[PROJ-123]` — a Jira issue, in the
+  bracket ticket form that `time-logger` already recognizes as a ticket kind — don't reuse the
+  bracket form for any other backend.
 - A plain `https://` link after the id is the backend's canonical URL — that's what makes it
   clickable and, for a GitHub pull/issue link, what lets `time-logger`'s evidence engine match
   it to a PR.
@@ -170,15 +170,21 @@ the line, tagged `#<project>` or `#unfiled`, with a fresh `t###` id and `(create
    `.git`). Group by the top-level folder name — that's a candidate project.
 3. Check `gh auth status`. If it succeeds, `github_issues` can be enabled; note the logged-in
    username.
-4. Show the discovered project → repo table and ask the user to confirm or correct it, and for
-   each project whether new todos there should go to `local` or `github` (only offer `github`
-   for projects with exactly one repo, or ask which repo when a project has several) — this
+4. Check whether an Atlassian MCP connector is available (look for a loaded or ToolSearch-able
+   Jira create/list/transition tool). If one is, ask whether the user wants a `jira` backend and,
+   if so, its `site` / `cloud_id` (from the connector) and a default `issue_type`; `jira` can be
+   enabled with no repo-discovery step since it isn't tied to a git remote.
+5. Show the discovered project → repo table and ask the user to confirm or correct it, and for
+   each project whether new todos there should go to `local`, `github`, or (if enabled) `jira` —
+   only offer `github` for projects with exactly one repo, or ask which repo when a project has
+   several; for `jira`, ask the project's `project_key` and, optionally, `epic`/`label` — this
    writes real routing behavior, so don't guess silently.
-5. Write `<data home>/capabilities.yml` (backend toggles) and the `## Projects` section of
-   `<data home>/user-preferences.md` (one line per project: name, backend, repo if any,
-   `matches:` patterns). Copy `github-issues.md` from `<skill_dir>/todo-instructions.examples/`
-   to `<data home>/todo-instructions/github.md` if the backend is enabled.
-6. Confirm the `todos_file` path (default `~/.claude/todos.md`); mention the `time-logger`
+6. Write `<data home>/capabilities.yml` (backend toggles) and the `## Projects` section of
+   `<data home>/user-preferences.md` (one line per project: name, backend, repo/project_key/
+   epic/label as applicable, `matches:` patterns). Copy `github-issues.md` and/or `jira.md` from
+   `<skill_dir>/todo-instructions.examples/` to `<data home>/todo-instructions/` for each backend
+   enabled.
+7. Confirm the `todos_file` path (default `~/.claude/todos.md`); mention the `time-logger`
    interop note above if that skill is also installed.
 
 ## Status
@@ -198,8 +204,12 @@ the Projects table, and counts of Pending / In Progress / Done lines in the flat
 - **GitHub backend stops on "connector not available"** — `gh auth status` failed on this
   machine; run `gh auth login`, or switch that project to `backend: local` in
   `user-preferences.md`.
-- **A GitHub-backed todo never auto-closes** — `/todo list` only re-checks items currently in
-  the flat file; if `gh` itself is failing, `list` says so per item rather than guessing.
+- **Jira backend stops on "connector not available"** — no Atlassian MCP connector is
+  configured on this machine; connect one, or switch that project to `backend: local` in
+  `user-preferences.md`.
+- **A GitHub- or Jira-backed todo never auto-closes** — `/todo list` only re-checks items
+  currently in the flat file; if the connector itself is failing, `list` says so per item rather
+  than guessing.
 
 ## Install
 

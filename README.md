@@ -29,7 +29,7 @@ step, so `npx skills add` still works normally. See each skill's own `SKILL.md`.
 | ✅ Production Ready | [`time-logger`](./skills/time-logger) | /time-logger setup \| refresh entries \| submit \| morning \| summary — drafts daily entries from your tools, with a local review dashboard. | @jarellano01 |  |
 | 🔍 Ready for Review | [`gather-context`](./skills/gather-context) | Systematically maps an unfamiliar pipeline's declared and tribal context. Use when onboarding onto or auditing a client pipeline. | @auwng | Looking for a second tester. |
 | 🔍 Ready for Review | [`plain-style`](./skills/plain-style) | Revises drafted prose to be direct, active, and free of filler. Use to tighten writing before it ships. | @auwng | Looking for a second tester. |
-| 🧪 In Development | [`todo`](./skills/todo) | /todo \| /todo <text> \| /todo done <id> \| /todo setup — hybrid local + GitHub Issues todo list, routed by project. | @jarellano01 | GitHub Issues backend only for now. Jira/Linear can be added later as a new file in todo-instructions.examples/, same shape as github-issues.md. |
+| 🧪 In Development | [`todo`](./skills/todo) | /todo \| /todo <text> \| /todo done <id> \| /todo setup — hybrid local + GitHub Issues/Jira todo list, routed by project. | @jarellano01 | GitHub Issues and Jira backends ship. Linear can be added later as a new file in todo-instructions.examples/, same shape as github-issues.md/jira.md. |
 <!-- SKILLS-TABLE:END -->
 
 ## Skill status

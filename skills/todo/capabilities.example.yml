@@ -23,3 +23,15 @@ backends:
     username: "" # auto-populated from `gh auth status` during setup
     # Per-project repo mapping lives in the Projects section of user-preferences.md, not here.
     instructions: ~/.local/share/todo/todo-instructions/github.md
+
+  # Requires an Atlassian MCP connector (tool names vary by installation/version — the
+  # instructions file ToolSearches for them rather than assuming one).
+  jira:
+    enabled: false
+    site: "" # e.g. https://yourteam.atlassian.net
+    cloud_id: "" # from the connector; auto-populated during setup if it can be detected
+    issue_type: Task # default issue type for new items; a project can override in its own mapping
+    assignee_account_id: "" # optional — leave blank to create issues unassigned
+    # Per-project project_key/epic/label mapping lives in the Projects section of
+    # user-preferences.md, not here.
+    instructions: ~/.local/share/todo/todo-instructions/jira.md

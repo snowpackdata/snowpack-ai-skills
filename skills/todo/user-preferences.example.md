@@ -15,6 +15,7 @@ gap is visible instead of silent — add a project entry rather than letting thi
 
 - **Acme** — backend: local — matches: acme-*, data-platform
 - **BigCo** — backend: github — repo: bigco-inc/bigco-app — matches: bigco-*, bigco-app
+- **Widgets** — backend: jira — project_key: WID — epic: WID-100 — matches: widgets-*
 - **Personal** — backend: local — matches: blog, side-project-*
 
 ---
