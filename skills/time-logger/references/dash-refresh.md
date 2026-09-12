@@ -55,7 +55,15 @@ Paths are relative to the data home (`~/.local/share/time-logger/`, or
      ```
      (Run `record` right after the agent writes, even though the fetch step may also have
      touched raw files moments earlier — it re-hashes current state rather than reusing the
-     `check` call's hash, so it can't record against a slightly-stale snapshot.)
+     `check` call's hash, so it can't record against a slightly-stale snapshot.) Then snap
+     entry starts to the nearest 15 minutes — a mechanical pass, not left to the agent's
+     judgment, since `generate-time-entry` frequently copies raw session/Slack timestamps
+     verbatim on merge/append runs:
+     ```bash
+     python3 <data home>/scripts/snap_entry_times.py <data home>/time_logs/time_entries_YYYYMMDD.md
+     ```
+     (Idempotent — a no-op if the file's already snapped, so it's cheap to run every time the
+     agent writes.)
    - **Combined file.** For `entries` or `all`, build the day's combined file (raw sections +
      Recommended Time Log Structure) and sync the dashboard — follow
      [`combined-file.md`](./combined-file.md). This is pure file concatenation, no extra LLM

@@ -47,6 +47,7 @@ if [ -n "$SKILL_DIR" ] && [ -d "$SKILL_DIR/.claude/agents" ]; then
   cp "$SKILL_DIR/scripts/scan_sessions.py" "$DATA_HOME/scripts/scan_sessions.py"
   cp "$SKILL_DIR/scripts/check_week_continuity.py" "$DATA_HOME/scripts/check_week_continuity.py"
   cp "$SKILL_DIR/scripts/check_draft_freshness.py" "$DATA_HOME/scripts/check_draft_freshness.py"
+  cp "$SKILL_DIR/scripts/snap_entry_times.py" "$DATA_HOME/scripts/snap_entry_times.py"
   [ -f "$DATA_HOME/capabilities.yml" ] || cp "$SKILL_DIR/capabilities.example.yml" "$DATA_HOME/capabilities.yml"
   [ -f "$DATA_HOME/user-preferences.md" ] || cp "$SKILL_DIR/user-preferences.example.md" "$DATA_HOME/user-preferences.md"
   # Remember where the skill lives so the headless launchd scripts can find agent/reference docs.

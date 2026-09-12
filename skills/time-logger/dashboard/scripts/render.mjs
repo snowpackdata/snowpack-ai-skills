@@ -147,6 +147,14 @@ async function renderTimeEntries() {
 // Line shape:  - [ ] [TICKET-123] text **(HIGH)** #slack #reply https://...slack.com/archives/...
 // `[TICKET-123]` → kind "jira"; otherwise kind "local". `#tags` are free-form (#slack, #pr,
 // #reply, #research …). Ticket IDs and links are what evidence attaches to.
+//
+// Grouping is deliberately loose so nothing that writes this file (e.g. the `todo` skill) has
+// to know this dashboard's display conventions: an explicit `### Group` heading names a group
+// as before, but isn't required — an item with none falls back to its own first `#tag` (or
+// "Ungrouped"). Groups merge by name across the whole file, regardless of which `## state`
+// section they appear under, so a project split across e.g. Pending/In Progress sections still
+// renders as one group. "Done"-ness is purely per item (the `[x]` checkbox) — a group is only
+// omitted entirely once every item in it is done.
 const SLACK_LINK_RE = /https?:\/\/[a-z0-9-]+\.slack\.com\/archives\/[^\s)>\]]+/gi;
 const PR_LINK_RE = /https?:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)/gi;
 
@@ -202,20 +210,26 @@ function todoEvidence(todo, ctx) {
 async function renderTodos(ctx) {
   const md = CONFIG.todos_file ? await read(CONFIG.todos_file) : null;
   if (!md) return { generated_at: NOW, status: 'missing', data: { groups: [] } };
-  const groups = [];
-  let state = 'Pending', group = null;
+  const groupsByName = new Map();
+  const order = [];
+  const getGroup = (name) => {
+    let g = groupsByName.get(name);
+    if (!g) { g = { name, items: [] }; groupsByName.set(name, g); order.push(name); }
+    return g;
+  };
+  let explicitGroup = null;
   for (const line of md.split('\n')) {
-    const h2 = line.match(/^## (.+)/);
-    if (h2) { state = h2[1].trim(); continue; }
+    if (/^## /.test(line)) { explicitGroup = null; continue; } // new state section — heading resets
     const h3 = line.match(/^### (.+)/);
-    if (h3) { group = { name: h3[1].trim(), state, items: [] }; groups.push(group); continue; }
+    if (h3) { explicitGroup = getGroup(h3[1].trim()); continue; }
     const item = line.match(/^- \[([ xX])\] (.+)/);
-    if (item && group) {
-      const todo = parseTodoLine(item[2].trim());
-      const done = item[1] !== ' ';
-      group.items.push({ done, ...todo, ...(done ? { evidence: [], suggest_done: false } : todoEvidence(todo, ctx)) });
-    }
+    if (!item) continue;
+    const todo = parseTodoLine(item[2].trim());
+    const done = item[1] !== ' ';
+    const entry = { done, ...todo, ...(done ? { evidence: [], suggest_done: false } : todoEvidence(todo, ctx)) };
+    (explicitGroup || getGroup(todo.tags[0] || 'Ungrouped')).items.push(entry);
   }
+  const groups = order.map((name) => groupsByName.get(name)).filter((g) => g.items.some((t) => !t.done));
   return { generated_at: NOW, status: 'ok', data: { groups } };
 }
 

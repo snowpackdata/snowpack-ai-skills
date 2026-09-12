@@ -1,0 +1,8 @@
+# Personal data lives in the data home (~/.local/share/todo/), never in this folder.
+# These patterns are a safety net in case anything writes to the old in-repo locations.
+capabilities.yml
+user-preferences.md
+todo-instructions/
+
+# macOS
+.DS_Store

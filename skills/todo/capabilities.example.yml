@@ -1,0 +1,25 @@
+# todo capabilities
+# Generated and updated by `/todo setup`.
+# Lives at ~/.local/share/todo/capabilities.yml (the data home — override with
+# $TODO_DATA_HOME). Never commit this file anywhere.
+# Last configured: (not yet run)
+
+settings:
+  data_home: ~/.local/share/todo
+  # The flat file every backend writes into. Defaults to the same path time-logger's
+  # dashboard reads as `dashboard.todos_file` — if you use both skills, todos created here
+  # show up on its Overview tab automatically, with PR/time-entry evidence, with zero extra
+  # config. Change it if you'd rather keep the two separate.
+  todos_file: ~/.claude/todos.md
+
+backends:
+  # Always on — the fallback when a project has no mapping, or maps to "local" explicitly.
+  local:
+    enabled: true
+
+  # Requires the gh CLI, authenticated: gh auth login
+  github_issues:
+    enabled: false
+    username: "" # auto-populated from `gh auth status` during setup
+    # Per-project repo mapping lives in the Projects section of user-preferences.md, not here.
+    instructions: ~/.local/share/todo/todo-instructions/github.md

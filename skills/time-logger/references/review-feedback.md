@@ -10,8 +10,10 @@ Drains `dashboard/feedback/pending.json`. Three item types:
 - `type: "pr_comment"` — `{ id, pr, url, title, comment, submitted_at }` where `pr` is
   `owner/repo#number`.
 - `type: "todo_comment"` — `{ id, todo_key, group, ticket, text, comment, submitted_at }`
-  where `group` is the `### ` section in the `dashboard.todos_file` from `capabilities.yml`
-  and `ticket`/`text` identify the `- [ ]` line.
+  where `group` is the group name shown on the dashboard for that item — a literal `### `
+  section in `dashboard.todos_file` (from `capabilities.yml`) if one exists there, otherwise a
+  label the renderer derived from the item's own first `#tag` (no `### ` heading to find in
+  that case) — and `ticket`/`text` identify the `- [ ]` line.
 
 ## Steps
 
@@ -24,8 +26,8 @@ no outward-facing tools; `pr_comment` items always wait for an interactive run.
 2. **Time-entry comments**: open the matching time-entry file and apply the comment to the
    markdown:
    - Rewording / correction of what happened → rewrite the block body.
-   - Hours change → update the block's `(Xh)` and the file's `**Hours**` header
-     (and time ranges if the comment implies them — keep 15-minute snapping).
+   - Hours change → update the block's `(Xh)` and the file's `**Hours**` header (and the
+     block's time range if the comment implies a different start).
    - "Split this" → break into separate blocks, one distinct scope each.
    - "Drop this" → remove the block and adjust the header totals.
    - Follow the standing time-entry style rules (outputs over intermediate errors, no
@@ -44,6 +46,15 @@ no outward-facing tools; `pr_comment` items always wait for an interactive run.
    split adds one entry per resulting block; a dropped entry has nothing to mark — if it had a
    prior reviewed record, remove that entry from the array too, since the block it referred to
    no longer exists).
+
+   **Re-snap after editing.** This flow can rewrite start times (directly, or indirectly via a
+   split), so once all `time_entry_comment` edits for a given date are applied, run the same
+   mechanical snapping pass `dash-refresh.md`'s Draft step uses — don't rely on getting the
+   15-minute snap right by hand:
+   ```bash
+   python3 <data home>/scripts/snap_entry_times.py <data home>/time_logs/time_entries_YYYYMMDD.md
+   ```
+   (Idempotent — run it once per distinct date touched, after that date's edits are done.)
 
 3. **PR comments**: interpret the note and act via the `gh` CLI (repo/number come from the
    `pr` field):

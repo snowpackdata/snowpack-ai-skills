@@ -468,7 +468,8 @@ function TodoRow({ group, todo, pending, submit, remove }) {
 }
 
 function Todos({ section, pending, submit, remove }) {
-  const groups = (section?.data?.groups || []).filter((g) => g.state.toLowerCase() !== 'done');
+  // render.mjs already omits any group whose items are all done; no state field to filter on.
+  const groups = section?.data?.groups || [];
   return (
     <Panel title="Todos" section={section} scroll>
       {!groups.length ? <p className="muted">No todos found.</p> :
@@ -955,8 +956,7 @@ export default function App() {
     const days = store.time_entries?.data?.days || [];
     const latest = days[0];
     const todoGroups = store.todos?.data?.groups || [];
-    const openTodos = todoGroups.filter((g) => g.state.toLowerCase() !== 'done')
-      .reduce((n, g) => n + g.items.filter((t) => !t.done).length, 0);
+    const openTodos = todoGroups.reduce((n, g) => n + g.items.filter((t) => !t.done).length, 0);
     const meetings = store.calendar?.data?.events?.length ?? 0;
     const unresolved = pending.filter((p) => !p.resolved).length;
     const unresolvedTime = pending.filter((p) => !p.resolved && p.type === 'time_entry_comment').length;

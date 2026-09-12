@@ -127,7 +127,11 @@ capture the generation but NOT the reading/understanding time, which is real log
 **Time rules:**
 - **Start every entry when the work actually started.** Use the session's first-activity time,
   the meeting's calendar time, or the first Slack message of a thread — snapped to the nearest
-  15 minutes (:00, :15, :30, :45). Never move an entry to make room for another one.
+  15 minutes (:00, :15, :30, :45). Never move an entry to make room for another one. Do your
+  best to snap it here, but don't worry about getting it exact: `dash-refresh.md`'s Draft step
+  runs `scripts/snap_entry_times.py` on whatever you write, which mechanically snaps the start
+  and re-derives the end from `(Xh)` — so a raw session/Slack timestamp that slips through gets
+  corrected regardless.
 - **Duration stays effort-based** (the table above), not the session's wall-clock span. An
   entry runs from its real start for its effort-based duration.
 - **Overlap is fine.** Parallel sessions, a meeting during a coding session, two clients in
