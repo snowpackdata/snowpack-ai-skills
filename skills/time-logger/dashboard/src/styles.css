@@ -227,12 +227,25 @@ a.chip:hover, a.ticket:hover { text-decoration: underline; }
 .evidence { margin: 2px 0 6px 24px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 
 /* ---- todos ---- */
-.todo-group { margin-bottom: 12px; }
-.todo-group h3 { font-size: 12px; margin: 0 0 4px; color: var(--ink-muted); font-weight: 600; letter-spacing: 0.04em; }
 .todo { display: flex; gap: 8px; padding: 3px 0; font-size: 13.5px; align-items: flex-start; }
-.todo .box { color: var(--ink-muted); flex: 0 0 auto; width: 12px; height: 12px; border: 1.5px solid var(--ink-muted); border-radius: 3px; margin-top: 4px; }
+.todo .box {
+  appearance: none; -webkit-appearance: none; background: none; padding: 0; cursor: pointer;
+  color: var(--ink-muted); flex: 0 0 auto; width: 12px; height: 12px;
+  border: 1.5px solid var(--ink-muted); border-radius: 3px; margin-top: 4px;
+}
+.todo .box:hover { border-color: var(--accent); background: var(--accent-soft); }
+.todo .box.busy { opacity: 0.4; cursor: default; }
+.todo .box.busy:hover { border-color: var(--ink-muted); background: none; }
 .todo-block.has-evidence .box { border-color: var(--good); background: var(--good-soft); }
 .todo.done { color: var(--ink-muted); text-decoration: line-through; }
+.add-todo-btn { margin-top: 12px; opacity: 1; }
+.add-todo-btn .ico { width: 12px; height: 12px; }
+.comment-box input[type="text"], .comment-box select {
+  background: var(--page); color: var(--ink); border: 1px solid var(--hairline);
+  border-radius: 8px; padding: 6px 10px; font: inherit;
+}
+.comment-box input[type="text"] { width: 100%; }
+.comment-box input[type="text"]:focus, .comment-box select:focus { border-color: var(--accent); outline: none; }
 
 /* ---- comments (hover-revealed affordance) ---- */
 .comment-btn {

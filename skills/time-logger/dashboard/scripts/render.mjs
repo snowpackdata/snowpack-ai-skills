@@ -147,8 +147,9 @@ async function renderTimeEntries() {
 // ---- todos: dashboard.todos_file in capabilities.yml (optional) ----------
 // Schema v2 (see ../../todo/CHANGELOG.md and ./todo-format.mjs): a `todos:` list of flat
 // items, each with `state`, `backend`, `id`, `project`, `text`, `url`, `group`, `priority`,
-// `created`, `done`, `notes`. `backend: jira` → kind "jira" (links via client.jira_browse_url);
-// anything else → kind "local". `project` is shown as this item's one tag.
+// `created`, `done`, `notes`. `kind` is just the item's own `backend` (local/github/jira/...);
+// `backend: jira` additionally links through `client.jira_browse_url`. `project` is shown as
+// this item's one tag.
 //
 // Grouping: an item's `group` field names a group explicitly if set, else its `project` is
 // used, so nothing that writes this file has to know this dashboard's display conventions.
@@ -163,7 +164,7 @@ function todoFields(item) {
   return {
     text: item.text || '',
     ticket: item.backend === 'jira' ? String(item.id).replace(/^jira:/, '') : null,
-    kind: item.backend === 'jira' ? 'jira' : 'local',
+    kind: item.backend || 'local',
     tags: item.project ? [item.project] : [],
     priority: item.priority || null,
     links: url ? [url] : [],

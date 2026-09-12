@@ -143,15 +143,20 @@ Overview's daily digest is the same flow with a fixed `daily digest` focus, save
 
 ## Todos
 
-If `dashboard.todos_file` names a [`todo` skill](../todo/README.md) v2 YAML file, the Overview
-tab renders it. Each item is either a **Jira** todo (`backend: jira`, linked through
-`jira_browse_url`) or a **local** one, tagged by its `project`. On every render the dashboard
-attaches **evidence** to open items: time entries whose id or link cites the todo, PRs that
-name it or are linked from it (with open / draft / merged / closed state), and Slack messages
-that mention either. An item with a merged PR or logged time gets a ✓ evidence chip. Nothing
-is closed automatically — the chip is there so you can comment "done — close it" on the
-dashboard and let `/time-logger feedback` mark it done (via `update-todo.mjs`, a deterministic
-patch by id), citing the proof in the appended note.
+If `dashboard.todos_file` names a [`todo` skill](../todo/README.md) v2 YAML file, it gets its
+own **Todos** tab: a project sidebar (open count per project, "All" for everything) and that
+project's open items on the right — same layout as Time entries/Summaries. Each item is either
+a **Jira**/**GitHub**/other-backend todo (chip named after its actual `backend`) or a **local**
+one, tagged by its `project`. The checkbox is live — clicking it calls `/api/todos/update`
+(same direct-write-then-re-render pattern as the non-billable toggle) to mark the item done
+immediately, no comment round-trip required. "Add todo" in the sidebar appends a local item the
+same way. On every render the dashboard also attaches **evidence** to open items: time entries
+whose id or link cites the todo, PRs that name it or are linked from it (with open / draft /
+merged / closed state), and Slack messages that mention either — an item with a merged PR or
+logged time gets a ✓ evidence chip, a hint (never an auto-close) that you can comment
+"done — close it" and let `/time-logger feedback` mark it done via `update-todo.mjs` instead,
+citing the proof in the appended note. The Overview tab still shows an "Open todos" count that
+links to the full page.
 
 ## Client-specific config
 

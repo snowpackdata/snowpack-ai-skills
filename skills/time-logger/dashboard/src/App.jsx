@@ -78,6 +78,7 @@ const NAV = [
   { label: 'Today', items: [
     { id: 'overview', label: 'Overview', icon: 'sun' },
     { id: 'time', label: 'Time entries', icon: 'clock' },
+    { id: 'todos', label: 'Todos', icon: 'list' },
   ] },
   { label: 'Sources', items: [
     { id: 'prs', label: 'GitHub PRs', icon: 'git' },
@@ -110,6 +111,8 @@ const ICON_PATHS = {
   merge: 'M6 3v12M6 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM18 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM18 9c0 4-3 6-6 6H9',
   timer: 'M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 9v4l2 2M9 2h6',
   reply: 'M9 17 4 12l5-5M4 12h11a5 5 0 0 1 0 10h-1',
+  list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  plus: 'M12 5v14M5 12h14',
 };
 function Icon({ name, className = 'ico' }) {
   return (
@@ -424,22 +427,23 @@ function EvidenceChip({ e }) {
   return null;
 }
 
-function TodoRow({ group, todo, pending, submit, remove }) {
+function TodoRow({ group, todo, pending, submit, remove, showTag = true, onToggleDone, busy }) {
   const [open, setOpen] = useState(false);
   const key = todo.id;
   const fb = pending.filter((f) => f.type === 'todo_comment' && f.todo_key === key && !f.resolved);
-  const shown = todo.text;
   const evidence = todo.evidence || [];
   return (
     <div className={`todo-block ${todo.suggest_done ? 'has-evidence' : ''}`}>
       <div className="todo">
-        <span className="box" aria-hidden="true" />
+        <button
+          type="button" className={`box ${busy ? 'busy' : ''}`} disabled={busy}
+          onClick={() => onToggleDone?.(todo)} title="Mark done" aria-label="Mark done" />
         <span>
           {todo.ticket && <><TicketLink id={todo.ticket} />{' '}</>}
-          <Linkify text={shown} />
+          <Linkify text={todo.text} />
           {todo.priority && <span className={`chip prio-${todo.priority}`}>{todo.priority}</span>}
           <span className={`chip kind kind-${todo.kind}`}>{todo.kind}</span>
-          {(todo.tags || []).map((t) => <span key={t} className="chip tag">#{t}</span>)}
+          {showTag && (todo.tags || []).map((t) => <span key={t} className="chip tag">#{t}</span>)}
           {' '}
           <button className="comment-btn" onClick={() => setOpen(!open)} title="Comment for the agent"><Icon name="comment" /></button>
         </span>
@@ -463,24 +467,117 @@ function TodoRow({ group, todo, pending, submit, remove }) {
   );
 }
 
-function Todos({ section, pending, submit, remove }) {
-  // render.mjs already omits any group whose items are all done; no state field to filter on.
-  const groups = section?.data?.groups || [];
+// Quick add: always writes backend: local (routing to a real backend needs an agent to
+// follow that project's instructions file — out of scope for a plain HTTP endpoint).
+function AddTodoForm({ projects, defaultProject, onDone }) {
+  const [text, setText] = useState('');
+  const [project, setProject] = useState(defaultProject || '');
+  const [busy, setBusy] = useState(false);
+  const add = async () => {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    try {
+      await fetch('/api/todos/add', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, project }),
+      });
+      setText('');
+      onDone();
+    } finally { setBusy(false); }
+  };
+  const onKeyDown = (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
   return (
-    <Panel title="Todos" section={section} scroll>
-      {!groups.length ? <p className="muted">No todos found.</p> :
-        groups.map((g) => (
-          <div className="todo-group" key={g.name}>
-            <h3>{g.name}</h3>
-            {g.items.filter((t) => !t.done).map((t, i) => (
-              <TodoRow key={i} group={g} todo={t} pending={pending} submit={submit} remove={remove} />
-            ))}
-            {g.items.some((t) => t.done) && (
-              <div className="small muted">{g.items.filter((t) => t.done).length} completed hidden</div>
-            )}
-          </div>
-        ))}
-    </Panel>
+    <div className="comment-box">
+      <input type="text" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKeyDown}
+        autoFocus placeholder="New local todo…" />
+      <div className="row">
+        <select value={project} onChange={(e) => setProject(e.target.value)}>
+          <option value="">unfiled</option>
+          {projects.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <button className="btn" onClick={add} disabled={busy || !text.trim()}>Add</button>
+        <button className="btn ghost" onClick={onDone}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// Todos page: a project sidebar (same layout as Time entries/Summaries) + that project's open
+// items on the right, or every project's when "All" is selected. Completed items stay counted,
+// never shown — this is a working list, not an archive.
+function TodosPage({ section, pending, submit, remove }) {
+  const groups = section?.data?.groups || [];
+  const [sel, setSel] = useState('all');
+  const [busyId, setBusyId] = useState(null);
+  const [justDone, setJustDone] = useState(() => new Set());
+  const [showAdd, setShowAdd] = useState(false);
+
+  const toggleDone = async (todo) => {
+    setBusyId(todo.id);
+    try {
+      await fetch('/api/todos/update', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: todo.id, state: 'done' }),
+      });
+      // Optimistic hide — the next 5s poll will confirm it via the re-rendered store.
+      setJustDone((s) => new Set(s).add(todo.id));
+    } finally { setBusyId(null); }
+  };
+
+  const projects = groups.map((g) => ({
+    name: g.name,
+    open: g.items.filter((t) => !t.done && !justDone.has(t.id)).length,
+  }));
+  const totalOpen = projects.reduce((n, p) => n + p.open, 0);
+  const shownGroups = sel === 'all' ? groups : groups.filter((g) => g.name === sel);
+
+  return (
+    <div className="te-layout">
+      <aside className="day-list">
+        <div className="panel">
+          <div className="panel-head"><h2>Projects</h2><span className="spacer" /><Badge section={section} /></div>
+          <button className={`day-item ${sel === 'all' ? 'active' : ''}`} onClick={() => setSel('all')}>
+            <span className="day-name">All</span>
+            <span className="spacer" />
+            <span className="small muted num">{totalOpen}</span>
+          </button>
+          {projects.map((p) => (
+            <button key={p.name} className={`day-item ${sel === p.name ? 'active' : ''}`} onClick={() => setSel(p.name)}>
+              <span className="day-name">{p.name}</span>
+              <span className="spacer" />
+              <span className="small muted num">{p.open}</span>
+            </button>
+          ))}
+          <button className="comment-btn add-todo-btn" onClick={() => setShowAdd(!showAdd)}>
+            <Icon name="plus" />{showAdd ? 'Cancel' : 'Add todo'}
+          </button>
+          {showAdd && (
+            <AddTodoForm
+              projects={projects.map((p) => p.name)}
+              defaultProject={sel !== 'all' ? sel : ''}
+              onDone={() => setShowAdd(false)} />
+          )}
+        </div>
+      </aside>
+      <div className="te-main">
+        {!shownGroups.length ? <div className="panel"><p className="muted">No todos found.</p></div> :
+          shownGroups.map((g) => {
+            const openItems = g.items.filter((t) => !t.done && !justDone.has(t.id));
+            const doneCount = g.items.filter((t) => t.done || justDone.has(t.id)).length;
+            return (
+              <div className="panel" key={g.name}>
+                <div className="panel-head"><h2>{g.name}</h2><span className="spacer" /><span className="small muted">{openItems.length} open</span></div>
+                {!openItems.length ? <p className="muted small">Nothing open here.</p> :
+                  openItems.map((t) => (
+                    <TodoRow key={t.id} group={g} todo={t} pending={pending} submit={submit} remove={remove}
+                      showTag={sel === 'all'} onToggleDone={toggleDone} busy={busyId === t.id} />
+                  ))}
+                {doneCount > 0 && <div className="small muted" style={{ marginTop: 8 }}>{doneCount} completed hidden</div>}
+              </div>
+            );
+          })}
+      </div>
+    </div>
   );
 }
 
@@ -1045,10 +1142,10 @@ export default function App() {
                   <span className="s">{meetingsDate ? fmtDay(meetingsDate) : ''}</span>
                 </span>
                 {store.todos?.status === 'ok' && (
-                  <span className="stat">
+                  <button className="stat linky" onClick={() => setTab('todos')}>
                     <span className="k">Open todos</span>
                     <span className="v">{tiles.openTodos}</span>
-                  </span>
+                  </button>
                 )}
                 <button className={`stat linky ${tiles.unresolved ? 'attention' : ''}`} onClick={() => setTab('time')}>
                   <span className="k">Comments queued</span>
@@ -1063,7 +1160,6 @@ export default function App() {
                 </div>
                 <div className="col">
                   <Calendar section={store.calendar} />
-                  {store.todos?.status === 'ok' && <Todos section={store.todos} pending={pending} submit={submit} remove={remove} />}
                 </div>
               </div>
             </>
@@ -1071,6 +1167,10 @@ export default function App() {
 
           {tab === 'time' && (
             <TimeEntriesPage section={store.time_entries} pending={pending} submit={submit} remove={remove} />
+          )}
+
+          {tab === 'todos' && (
+            <TodosPage section={store.todos} pending={pending} submit={submit} remove={remove} />
           )}
 
           {tab === 'prs' && (

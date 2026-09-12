@@ -6,7 +6,8 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, extname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DATA_HOME, get } from './scripts/capabilities.mjs';
+import { DATA_HOME, get, expandHome } from './scripts/capabilities.mjs';
+import { parseTodosFile, stringifyTodosFile } from './scripts/todo-format.mjs';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const DIST = join(ROOT, 'dist');
@@ -213,6 +214,71 @@ const server = createServer(async (req, res) => {
       await writeFile(file, updated.join('\n'));
       // Re-render synchronously so the change is visible on the client's next poll, not just
       // after the next /time-logger refresh.
+      execFileSync('node', ['scripts/render.mjs'], { cwd: ROOT });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: true }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, error: String(e) }));
+    }
+  }
+
+  // Todos: direct structured edits to dashboard.todos_file (schema v2 — see
+  // ../todo/CHANGELOG.md). Same pattern as non-billable above: write the source file
+  // directly, then re-render synchronously so the change is visible on the next poll.
+  if (path === '/api/todos/update' && req.method === 'POST') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const { id, state } = JSON.parse(body);
+      if (!id) throw new Error('id required');
+      if (!['pending', 'in_progress', 'done'].includes(state)) throw new Error('state must be pending, in_progress, or done');
+      const file = expandHome(get('dashboard.todos_file', ''));
+      if (!file) throw new Error('dashboard.todos_file not configured');
+      const data = parseTodosFile(await readFile(file, 'utf8'));
+      const item = data.todos.find((t) => t.id === id);
+      if (!item) throw new Error(`no todo with id ${id}`);
+      item.state = state;
+      item.done = state === 'done' ? (item.done || new Date().toISOString().slice(0, 10)) : null;
+      await writeFile(file, stringifyTodosFile(data));
+      execFileSync('node', ['scripts/render.mjs'], { cwd: ROOT });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: true }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, error: String(e) }));
+    }
+  }
+
+  // Todos: quick local add from the dashboard (no backend routing — that needs an agent to
+  // follow the project's backend instructions; this always writes backend: local).
+  if (path === '/api/todos/add' && req.method === 'POST') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const { text, project } = JSON.parse(body);
+      if (!text || !text.trim()) throw new Error('text required');
+      const file = expandHome(get('dashboard.todos_file', ''));
+      if (!file) throw new Error('dashboard.todos_file not configured');
+      const data = parseTodosFile(await readFile(file, 'utf8').catch(() => ''));
+      const nextN = data.todos
+        .map((t) => (String(t.id).match(/^t(\d+)$/) || [])[1])
+        .filter(Boolean)
+        .reduce((max, n) => Math.max(max, Number(n)), 0) + 1;
+      data.todos.push({
+        id: `t${String(nextN).padStart(3, '0')}`,
+        project: (project || 'unfiled').trim() || 'unfiled',
+        text: text.trim(),
+        state: 'pending',
+        backend: 'local',
+        url: null,
+        group: null,
+        priority: null,
+        created: new Date().toISOString().slice(0, 10),
+        done: null,
+        notes: [],
+      });
+      await writeFile(file, stringifyTodosFile(data));
       execFileSync('node', ['scripts/render.mjs'], { cwd: ROOT });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ ok: true }));
