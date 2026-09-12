@@ -159,14 +159,31 @@ async function renderTimeEntries() {
 const SLACK_LINK_RE = /https?:\/\/[a-z0-9-]+\.slack\.com\/archives\/[^\s)>\]]+/gi;
 const PR_LINK_RE = /https?:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)/gi;
 
+// Some writers (agents composing text by hand) encode priority as a leading
+// "**(HIGH)**"/"**(MEDIUM)**"/"**(LOW)**" marker in `text` instead of the structured
+// `priority` field. Parse it out so it renders as the real priority chip instead of
+// literal asterisks, and doesn't clutter the displayed text.
+const INLINE_PRIORITY_RE = /^\s*\*\*\(?(high|medium|low)\)?\*\*\s*/i;
+
+// Writers often flag a stalled item inline ("blocked on X", "blocked w/ Y", "PENDING
+// VERIFICATION") in `text` or a `notes` entry rather than a structured status field.
+// Surface it as a chip so it doesn't get lost inside a wall of text.
+const BLOCKED_RE = /\bblocked\b|\bpending verification\b/i;
+function isBlocked(item) {
+  return BLOCKED_RE.test([item.text, ...(item.notes || [])].filter(Boolean).join(' '));
+}
+
 function todoFields(item) {
   const url = item.url || null;
+  const inlineMatch = !item.priority && (item.text || '').match(INLINE_PRIORITY_RE);
+  const text = inlineMatch ? item.text.slice(inlineMatch[0].length) : (item.text || '');
+  const priority = item.priority || (inlineMatch ? inlineMatch[1].toLowerCase() : null);
   return {
-    text: item.text || '',
+    text,
     ticket: item.backend === 'jira' ? String(item.id).replace(/^jira:/, '') : null,
     kind: item.backend || 'local',
     tags: item.project ? [item.project] : [],
-    priority: item.priority || null,
+    priority,
     links: url ? [url] : [],
     pr_keys: url ? [...url.matchAll(PR_LINK_RE)].map((m) => `${m[1]}#${m[2]}`) : [],
     slack_links: url ? (url.match(SLACK_LINK_RE) || []) : [],
@@ -218,7 +235,9 @@ async function renderTodos(ctx) {
   for (const item of items) {
     const done = item.state === 'done';
     const todo = todoFields(item);
-    const entry = { id: item.id, done, ...todo, ...(done ? { evidence: [], suggest_done: false } : todoEvidence(todo, ctx)) };
+    const notes = Array.isArray(item.notes) ? item.notes : [];
+    const blocked = !done && isBlocked(item);
+    const entry = { id: item.id, done, notes, blocked, ...todo, ...(done ? { evidence: [], suggest_done: false } : todoEvidence(todo, ctx)) };
     getGroup(item.group || item.project || 'Ungrouped').items.push(entry);
   }
   const groups = order.map((name) => groupsByName.get(name)).filter((g) => g.items.some((t) => !t.done));

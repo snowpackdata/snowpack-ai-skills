@@ -210,6 +210,7 @@ a.chip:hover, a.ticket:hover { text-decoration: underline; }
 .chip.prio-high { color: var(--warning); border-color: var(--warning); }
 .chip.prio-medium { color: var(--ink-2); }
 .chip.prio-low { color: var(--ink-muted); }
+.chip.blocked { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 55%, transparent); background: var(--critical-soft); }
 .ticket { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500; color: var(--accent); }
 /* Client tags — configured org quiet; other orgs visibly separate; unknown flagged */
 .chip.client-primary { color: var(--ink-2); }
@@ -238,6 +239,13 @@ a.chip:hover, a.ticket:hover { text-decoration: underline; }
 .todo .box.busy:hover { border-color: var(--ink-muted); background: none; }
 .todo-block.has-evidence .box { border-color: var(--good); background: var(--good-soft); }
 .todo.done { color: var(--ink-muted); text-decoration: line-through; }
+.todo-more {
+  background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit;
+  font-size: 12px; padding: 0 2px; margin-left: 2px;
+}
+.notes-toggle { cursor: pointer; }
+.todo-notes { margin: 2px 0 6px 24px; padding: 0 0 0 16px; color: var(--ink-2); }
+.todo-notes li { margin: 2px 0; }
 .add-todo-btn { margin-top: 12px; opacity: 1; }
 .add-todo-btn .ico { width: 12px; height: 12px; }
 .comment-box input[type="text"], .comment-box select {

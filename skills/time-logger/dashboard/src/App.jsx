@@ -427,11 +427,32 @@ function EvidenceChip({ e }) {
   return null;
 }
 
+// Long todo text (a multi-sentence status log) collapses to a short preview by default so
+// the list stays scannable; "more" expands the full text in place.
+const TODO_PREVIEW_LEN = 220;
+function TodoText({ text }) {
+  const [expanded, setExpanded] = useState(false);
+  const long = text.length > TODO_PREVIEW_LEN;
+  const shown = long && !expanded ? text.slice(0, TODO_PREVIEW_LEN).replace(/\s+\S*$/, '') + '…' : text;
+  return (
+    <>
+      {inlineMd(shown)}
+      {long && (
+        <button className="todo-more" onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}>
+          {expanded ? 'less' : 'more'}
+        </button>
+      )}
+    </>
+  );
+}
+
 function TodoRow({ group, todo, pending, submit, remove, showTag = true, onToggleDone, busy }) {
   const [open, setOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const key = todo.id;
   const fb = pending.filter((f) => f.type === 'todo_comment' && f.todo_key === key && !f.resolved);
   const evidence = todo.evidence || [];
+  const notes = todo.notes || [];
   return (
     <div className={`todo-block ${todo.suggest_done ? 'has-evidence' : ''}`}>
       <div className="todo">
@@ -440,14 +461,25 @@ function TodoRow({ group, todo, pending, submit, remove, showTag = true, onToggl
           onClick={() => onToggleDone?.(todo)} title="Mark done" aria-label="Mark done" />
         <span>
           {todo.ticket && <><TicketLink id={todo.ticket} />{' '}</>}
-          <Linkify text={todo.text} />
+          <TodoText text={todo.text} />
           {todo.priority && <span className={`chip prio-${todo.priority}`}>{todo.priority}</span>}
+          {todo.blocked && <span className="chip blocked" title="Mentions being blocked or pending verification">blocked</span>}
           <span className={`chip kind kind-${todo.kind}`}>{todo.kind}</span>
           {showTag && (todo.tags || []).map((t) => <span key={t} className="chip tag">#{t}</span>)}
+          {notes.length > 0 && (
+            <button className="chip tag notes-toggle" onClick={() => setNotesOpen(!notesOpen)}>
+              {notesOpen ? 'hide' : notes.length} {notes.length === 1 ? 'note' : 'notes'}
+            </button>
+          )}
           {' '}
           <button className="comment-btn" onClick={() => setOpen(!open)} title="Comment for the agent"><Icon name="comment" /></button>
         </span>
       </div>
+      {notesOpen && notes.length > 0 && (
+        <ul className="todo-notes small">
+          {notes.map((n, i) => <li key={i}>{inlineMd(n)}</li>)}
+        </ul>
+      )}
       {evidence.length > 0 && (
         <div className="evidence small">
           {todo.suggest_done && <span className="chip ev ev-done" title="Time was logged or a PR merged against this — comment to close it"><Icon name="check" />evidence</span>}
