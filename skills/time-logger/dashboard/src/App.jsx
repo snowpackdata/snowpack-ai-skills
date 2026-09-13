@@ -195,27 +195,6 @@ function usePendingFeedback() {
   return { pending, submit, remove };
 }
 
-function useReviewed() {
-  const [reviewed, setReviewed] = useState([]);
-  const refresh = useCallback(async () => {
-    try {
-      const r = await fetch('/api/reviewed');
-      if (r.ok) setReviewed(await r.json());
-    } catch { /* ignore */ }
-  }, []);
-  useEffect(() => { refresh(); }, [refresh]);
-  const toggle = useCallback(async (date, val) => {
-    const r = await fetch('/api/reviewed', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, reviewed: val }),
-    });
-    if (!r.ok) throw new Error('reviewed toggle failed');
-    await refresh();
-  }, [refresh]);
-  return { reviewed, toggle };
-}
-
 function useReviewedEntries() {
   const [reviewedEntries, setReviewedEntries] = useState([]);
   const refresh = useCallback(async () => {
@@ -846,56 +825,218 @@ function SummaryView({ summary: cur, compact }) {
 
 // ---------- time entries page ----------
 function fmtClock(t) {
-  const h = Math.floor(t), m = Math.round((t - h) * 60);
+  // % 24 first: an end time of exactly 24 (midnight) must read as 12:00 AM, not 12:00 PM —
+  // matters for rebuildHeading, which has to match server.mjs's formatHourRange exactly.
+  const hRaw = Math.floor(t), m = Math.round((t - hRaw) * 60);
+  const h = hRaw % 24;
   const hh = ((h + 11) % 12) + 1, ap = h < 12 ? 'AM' : 'PM';
   return `${hh}:${String(m).padStart(2, '0')} ${ap}`;
 }
 
-function DayTimeline({ day }) {
+const PX_PER_HOUR = 120; // cards are header-only now (detail moved to the side panel), so this just needs room for one header line at a 15-min slot
+const snapQuarter = (h) => Math.round(h * 4) / 4;
+
+// Reconstruct an entry's stable heading text (time prefix + "(Xh)") after a drag, so the
+// dashboard can recognize the entry as "already applied" the moment the next poll's data
+// comes back — without waiting on the server to echo the new heading. Must produce exactly
+// what server.mjs's /api/entries/time-range handler writes to disk (same regex, same
+// fmtClock-equivalent time formatting), or the override below never clears.
+function rebuildHeading(heading, range) {
+  const m = heading.match(/^(.+?)\s+—\s+(.*)$/);
+  if (!m) return heading;
+  const durationHours = Math.round((range.end - range.start) * 100) / 100;
+  const newRest = m[2].replace(/(\d+(?:\.\d+)?)h/, `${durationHours}h`);
+  return `${fmtClock(range.start)} – ${fmtClock(range.end)} — ${newRest}`;
+}
+
+// Vertical day schedule: a 15-min-snapped grid where each entry is a full-detail card (same
+// content as the old plain Entry list — notes, tickets, comment box, reviewed/non-billable
+// toggles) positioned by time, draggable by its header to move, or by its top/bottom edge to
+// resize — modeled on Cronos's timesheet day view. This *is* the day's entry list now, not a
+// decoration above it; only entries without a parseable time (rare — a malformed heading)
+// fall outside it, surfaced separately by the caller. Persists directly into the real
+// time-entries markdown file (via /api/entries/time-range, the same direct-write-then-rerender
+// pattern as the non-billable toggle) the moment you let go of the mouse, rather than queuing a
+// comment for the agent to apply later.
+function DayGrid({ day, pending, submit, remove, reviewedEntryKeys, toggleEntry, onSelectEntry, selectedLetter }) {
   const items = day.entries.filter((e) => e.range);
+  // letter -> { heading, range }: entries this component has already saved locally, ahead of
+  // the ~5s poll that will confirm it server-side. Keyed by letter (stable across a pure time
+  // edit, since letters are assigned by position in the file and this feature never reorders
+  // blocks) rather than heading, because heading itself is what a drag changes.
+  const [overrides, setOverrides] = useState({});
+  const [preview, setPreview] = useState(null); // { letter, range } — live position while dragging
+  const dragRef = useRef(null);
+
+  // Once a fresh poll's heading matches what we already applied locally, drop the override —
+  // the server copy has caught up, no need to keep overriding it.
+  useEffect(() => {
+    setOverrides((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const e of items) {
+        if (next[e.letter] && next[e.letter].heading === e.heading) { delete next[e.letter]; changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [items]);
+
   if (!items.length) return null;
-  const d0 = Math.min(7, Math.floor(Math.min(...items.map((e) => e.range.start))));
-  const d1 = Math.max(18, Math.ceil(Math.max(...items.map((e) => e.range.end))));
-  const span = d1 - d0;
-  const pct = (t) => `${((t - d0) / span) * 100}%`;
-  const sorted = [...items].sort((a, b) => a.range.start - b.range.start);
-  const laneEnds = [];
-  sorted.forEach((e) => {
-    let lane = laneEnds.findIndex((end) => end <= e.range.start + 1e-9);
-    if (lane === -1) { lane = laneEnds.length; laneEnds.push(0); }
-    laneEnds[lane] = e.range.end; e.lane = lane;
+
+  const effective = items.map((e) => {
+    const ov = overrides[e.letter];
+    let out = ov ? { ...e, heading: ov.heading, range: ov.range } : e;
+    if (preview && preview.letter === e.letter) out = { ...out, range: preview.range };
+    return out;
   });
+
+  const d0 = Math.min(7, Math.floor(Math.min(...effective.map((e) => e.range.start))));
+  const d1 = Math.max(18, Math.ceil(Math.max(...effective.map((e) => e.range.end))));
+
+  // Lane-assign PER OVERLAP CLUSTER, not globally — a single busy afternoon shouldn't shrink
+  // every unrelated morning card's width too. Sorted by start, a cluster is a maximal run of
+  // mutually-touching intervals (next start < the max end seen so far in the run); each
+  // cluster gets its own lane count, so an entry with no overlap always gets full width.
+  const sorted = [...effective].sort((a, b) => a.range.start - b.range.start);
+  const assignClusterLanes = (from, to) => {
+    const laneEnds = [];
+    for (let i = from; i < to; i++) {
+      const e = sorted[i];
+      let lane = laneEnds.findIndex((end) => end <= e.range.start + 1e-9);
+      if (lane === -1) { lane = laneEnds.length; laneEnds.push(0); }
+      laneEnds[lane] = e.range.end;
+      e.lane = lane;
+    }
+    for (let i = from; i < to; i++) sorted[i].numLanes = Math.max(1, laneEnds.length);
+  };
+  let clusterStart = 0, clusterEnd = -Infinity;
+  sorted.forEach((e, i) => {
+    if (e.range.start >= clusterEnd - 1e-9) {
+      if (i > clusterStart) assignClusterLanes(clusterStart, i);
+      clusterStart = i;
+      clusterEnd = e.range.end;
+    } else {
+      clusterEnd = Math.max(clusterEnd, e.range.end);
+    }
+  });
+  if (sorted.length) assignClusterLanes(clusterStart, sorted.length);
+
   const gaps = [];
   let cur = sorted[0].range.start;
   sorted.forEach((e) => {
     if (e.range.start > cur + 1e-9) gaps.push([cur, e.range.start]);
     cur = Math.max(cur, e.range.end);
   });
+
+  const onMove = (event) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const deltaHours = (event.clientY - drag.startClientY) / PX_PER_HOUR;
+    let start = drag.original.start, end = drag.original.end;
+    if (drag.kind === 'move') {
+      const duration = drag.original.end - drag.original.start;
+      start = snapQuarter(drag.original.start + deltaHours);
+      start = Math.max(drag.windowD0, Math.min(start, drag.windowD1 - duration));
+      end = start + duration;
+    } else if (drag.kind === 'resize-top') {
+      start = snapQuarter(drag.original.start + deltaHours);
+      start = Math.max(drag.windowD0, Math.min(start, drag.original.end - 0.25));
+    } else {
+      end = snapQuarter(drag.original.end + deltaHours);
+      end = Math.min(drag.windowD1, Math.max(end, drag.original.start + 0.25));
+    }
+    drag.current = { start, end };
+    setPreview({ letter: drag.letter, range: { start, end } });
+  };
+
+  const onUp = async () => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.body.style.userSelect = '';
+    setPreview(null);
+    if (!drag) return;
+    const finalRange = drag.current || drag.original;
+    if (finalRange.start === drag.original.start && finalRange.end === drag.original.end) {
+      // No actual movement — this was a click, not a drag. Only 'move' (the card's header/body,
+      // not a resize handle) opens the side panel; a no-op resize-handle click does nothing.
+      if (drag.kind === 'move') onSelectEntry?.(drag.entry);
+      return;
+    }
+    try {
+      const res = await fetch('/api/entries/time-range', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: day.date, heading: drag.heading, startHour: finalRange.start, endHour: finalRange.end }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+      const newHeading = rebuildHeading(drag.heading, finalRange);
+      setOverrides((prev) => ({ ...prev, [drag.letter]: { heading: newHeading, range: finalRange } }));
+    } catch (err) {
+      console.error('Error saving dragged/resized entry:', err);
+    }
+  };
+
+  const beginDrag = (entry, kind, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragRef.current = {
+      letter: entry.letter,
+      kind,
+      startClientY: event.clientY,
+      original: { ...entry.range },
+      heading: entry.heading,
+      entry,
+      windowD0: d0,
+      windowD1: d1,
+    };
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
   return (
-    <div className="tl">
-      <div className="tl-ticks">
-        {Array.from({ length: d1 - d0 + 1 }, (_, i) => d0 + i).map((h) => (
-          <span key={h} className="tl-tick" style={{ left: pct(h) }}>
-            {((h + 11) % 12) + 1}{h < 12 ? 'a' : 'p'}
-          </span>
-        ))}
-      </div>
-      <div className="tl-lanes" style={{ height: laneEnds.length * 32 + 6 }}>
-        {sorted.map((e) => (
-          <div key={e.heading} className={`tl-blk ${e.is_meeting ? 'meet' : ''}`}
-            style={{ left: pct(e.range.start), width: `${((e.range.end - e.range.start) / span) * 100}%`, top: e.lane * 32 + 6 }}
-            title={`${e.letter} — ${e.time} — ${e.title}`}>
-            <span className="lbl">{e.letter}</span>{e.title}
-          </div>
-        ))}
-      </div>
-      <div className="tl-cover">
-        {gaps.map(([a, b], i) => (
-          <div key={i} className="tl-gap" style={{ left: pct(a), width: `${((b - a) / span) * 100}%` }} />
-        ))}
+    <div className="dg-wrap">
+      <div className="dg" style={{ height: (d1 - d0) * PX_PER_HOUR }}>
+        <div className="dg-hours">
+          {Array.from({ length: d1 - d0 + 1 }, (_, i) => d0 + i).map((h) => (
+            <span key={h} className="dg-hour-label" style={{ top: (h - d0) * PX_PER_HOUR }}>
+              {((h + 11) % 12) + 1}{h < 12 ? 'a' : 'p'}
+            </span>
+          ))}
+        </div>
+        <div className="dg-track">
+          {sorted.map((e) => {
+            const entryKey = `${day.date}|${e.heading}`;
+            return (
+              <div
+                key={e.letter}
+                className={`dg-cell ${e.letter === selectedLetter ? 'selected' : ''}`}
+                title={`${e.time} — ${e.title}${e.hours != null ? ` (${e.hours}h)` : ''}${e.non_billable ? ' [non-billable]' : ''}${e.body ? `\n\n${e.body}` : ''}`}
+                style={{
+                  top: (e.range.start - d0) * PX_PER_HOUR,
+                  height: (e.range.end - e.range.start) * PX_PER_HOUR,
+                  left: `${(e.lane / e.numLanes) * 100}%`,
+                  width: `${100 / e.numLanes}%`,
+                }}
+              >
+                <div className="dg-resize-handle top" onMouseDown={(ev) => beginDrag(e, 'resize-top', ev)} />
+                <Entry
+                  day={day} entry={e} pending={pending} submit={submit} remove={remove}
+                  isReviewed={reviewedEntryKeys.has(entryKey)}
+                  toggleReviewed={(val) => toggleEntry(day.date, e.heading, val)}
+                  variant="card"
+                  onDragHandleMouseDown={(ev) => beginDrag(e, 'move', ev)}
+                />
+                <div className="dg-resize-handle bottom" onMouseDown={(ev) => beginDrag(e, 'resize-bottom', ev)} />
+              </div>
+            );
+          })}
+        </div>
       </div>
       {gaps.length > 0 && (
-        <div className="tl-gaplbl">Unscheduled gaps: {gaps.map(([a, b]) => `${fmtClock(a)}–${fmtClock(b)}`).join(', ')}</div>
+        <div className="dg-gaplbl">Unscheduled gaps: {gaps.map(([a, b]) => `${fmtClock(a)}–${fmtClock(b)}`).join(', ')}</div>
       )}
     </div>
   );
@@ -932,7 +1073,12 @@ function CommentBox({ context, submit, onDone, placeholder }) {
   );
 }
 
-function Entry({ day, entry, pending, submit, remove, isReviewed, toggleReviewed }) {
+// variant 'list' (default): plain stacked row, as always. variant 'card': same content, sized
+// to fill whatever positioned wrapper the caller (DayGrid) puts it in, scrolling internally if
+// the wrapper's time-proportional height is too short for the content. onDragHandleMouseDown,
+// card mode only: wired to the badge/time header specifically (not the whole card) so dragging
+// to move an entry doesn't fight with clicking a button, ticket link, or the notes text inside it.
+function Entry({ day, entry, pending, submit, remove, isReviewed, toggleReviewed, variant = 'list', onDragHandleMouseDown }) {
   const [open, setOpen] = useState(false);
   const [nbBusy, setNbBusy] = useState(false);
   const fb = pending.filter((p) => p.date === day.date && p.heading === entry.heading && !p.resolved);
@@ -950,120 +1096,380 @@ function Entry({ day, entry, pending, submit, remove, isReviewed, toggleReviewed
       });
     } finally { setNbBusy(false); }
   };
+  const isCard = variant === 'card';
   return (
-    <div className="entry">
-      <div className={`entry-badge ${entry.is_meeting ? 'meet' : ''}`}>{entry.letter || '·'}</div>
+    <div className={isCard ? 'entry entry-card' : 'entry'}>
+      {/* List mode only: its own column (roomy, no width pressure). Card mode folds the letter
+          into the header row instead (see entry-badge-inline below) — a whole reserved 28px+gap
+          column was wasted space on cards that are often only a couple hundred px wide. */}
+      {!isCard && (
+        <div className={`entry-badge ${entry.is_meeting ? 'meet' : ''}`}>
+          {entry.letter || '·'}
+        </div>
+      )}
       <div className="entry-main">
-        <div className="entry-head">
+        <div className={`entry-head ${isCard ? 'drag-handle' : ''}`} onMouseDown={isCard ? onDragHandleMouseDown : undefined}>
+          {isCard && (
+            <span className={`entry-badge-inline ${entry.is_meeting ? 'meet' : ''}`}>{entry.letter || '·'}</span>
+          )}
           <span className="time">{entry.time}</span>
           <span className="title">{entry.title}</span>
           {entry.is_meeting && <span className="mtag">MEETING</span>}
           <ClientChip client={entry.client} />
           {entry.hours != null && <span className="hours">{entry.hours}h</span>}
           <span className="spacer" />
-          <button
-            className={`entry-nonbillable-btn ${entry.non_billable ? 'on' : ''}`}
-            onClick={toggleNonBillable} disabled={nbBusy}
-            title={entry.non_billable ? 'Non-billable — click to unmark' : 'Mark this entry as non-billable'}>
-            {entry.non_billable ? 'Non-billable' : 'Bill?'}
-          </button>
-          <button
-            className={`entry-review-btn ${isReviewed ? 'on' : ''}`}
-            onClick={() => toggleReviewed(!isReviewed)}
-            title={isReviewed ? 'Reviewed — click to unmark' : 'Mark this entry as reviewed'}>
-            <Icon name="check" />
-          </button>
+          {/* Card mode: pinned to the card's top-right corner (see .entry-card .entry-toggles) so
+              they're always in the same spot regardless of how the rest of the header wraps —
+              they float over the title/tags rather than getting pushed out of the card's box. */}
+          <div className="entry-toggles">
+            {/* Card mode only — list mode already shows each queued comment inline via FbItem
+                (see entry-scroll below), so a count badge here would be redundant there. */}
+            {isCard && fb.length > 0 && (
+              <span className="fb-count" title={`${fb.length} comment${fb.length > 1 ? 's' : ''} queued for the agent`}>
+                <Icon name="comment" />{fb.length}
+              </span>
+            )}
+            <button
+              className={`entry-nonbillable-btn ${entry.non_billable ? 'on' : ''}`}
+              onMouseDown={(ev) => ev.stopPropagation()}
+              onClick={toggleNonBillable} disabled={nbBusy}
+              title={entry.non_billable ? 'Non-billable — click to unmark' : 'Mark this entry as non-billable'}>
+              {entry.non_billable ? 'Non-billable' : 'Bill?'}
+            </button>
+            <button
+              className={`entry-review-btn ${isReviewed ? 'on' : ''}`}
+              onMouseDown={(ev) => ev.stopPropagation()}
+              onClick={() => toggleReviewed(!isReviewed)}
+              title={isReviewed ? 'Reviewed — click to unmark' : 'Mark this entry as reviewed'}>
+              <Icon name="check" />
+            </button>
+          </div>
         </div>
-        {!entry.is_meeting && <p className="entry-body">{entry.body}</p>}
-        <div>
-          {entry.tickets.map((t) => <TicketLink key={t} id={t} className="chip" />)}
-        </div>
-        {fb.map((f) => <FbItem key={f.id} f={f} remove={remove} />)}
-        {open
-          ? <CommentBox context={{ type: 'time_entry_comment', date: day.date, heading: entry.heading }} submit={submit} onDone={() => setOpen(false)} />
-          : <button className="comment-btn" onClick={() => setOpen(true)}><Icon name="comment" />Comment</button>}
+        {/* Card mode is header-only now — clicking the card opens the side panel for this detail
+            (notes/tickets/comment box) instead of showing it inline. */}
+        {!isCard && (
+          <div className="entry-scroll">
+            {!entry.is_meeting && <p className="entry-body">{entry.body}</p>}
+            <div>
+              {entry.tickets.map((t) => <TicketLink key={t} id={t} className="chip" />)}
+            </div>
+            {fb.map((f) => <FbItem key={f.id} f={f} remove={remove} />)}
+            {open
+              ? <CommentBox context={{ type: 'time_entry_comment', date: day.date, heading: entry.heading }} submit={submit} onDone={() => setOpen(false)} />
+              : <button className="comment-btn" onClick={() => setOpen(true)}><Icon name="comment" />Comment</button>}
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+// Sunday-anchored week helpers. Dates are literal 'YYYY-MM-DD' strings throughout this app;
+// always round-trip through local noon (never .toISOString(), which is UTC-based and can land
+// on the wrong calendar day depending on the viewer's offset) to avoid DST/timezone day-shift.
+function toISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function startOfWeek(dateStr) {
+  const d = new Date(`${dateStr}T12:00:00`);
+  d.setDate(d.getDate() - d.getDay());
+  return toISO(d);
+}
+function addDays(dateStr, n) {
+  const d = new Date(`${dateStr}T12:00:00`);
+  d.setDate(d.getDate() + n);
+  return toISO(d);
+}
+
+// Sums client_hours across several days into one map — reused by OrgTotals (which only ever
+// reads `.client_hours` off whatever object it's handed) to get a week total for free.
+function mergeClientHours(days) {
+  const merged = {};
+  for (const d of days) {
+    for (const [c, h] of Object.entries(d?.client_hours || {})) {
+      merged[c] = Math.round(((merged[c] || 0) + h) * 100) / 100;
+    }
+  }
+  return merged;
+}
+
+// org isolates to entries whose client maps to that org (clientMeta is the same client->org
+// mapping OrgTotals/ClientChip already use, from CONFIG.clients); hideNonBillable drops entries
+// flagged [non-billable] in their heading.
+function matchesFilters(entry, { org, hideNonBillable }) {
+  if (hideNonBillable && entry.non_billable) return false;
+  if (org && clientMeta(entry.client).org !== org) return false;
+  return true;
+}
+
+// Recomputes a day's entries/hours/client_hours under the active filters, for every place that
+// reads them (week tiles, week totals, the day-meta header, the grid). Everything else on the
+// day object (tickets/repos/PRs/span/updated_at) is left as the server rendered it — those
+// summarize the unfiltered day and aren't worth re-deriving client-side just for a filter.
+function applyFiltersToDay(day, filters) {
+  const entries = day.entries.filter((e) => matchesFilters(e, filters));
+  const hours = Math.round(entries.reduce((n, e) => n + (e.hours || 0), 0) * 100) / 100;
+  const client_hours = {};
+  for (const e of entries) {
+    const k = e.client || 'untagged';
+    client_hours[k] = Math.round(((client_hours[k] || 0) + (e.hours || 0)) * 100) / 100;
+  }
+  return { ...day, entries, hours, client_hours };
+}
+
+// Org isolate + hide-non-billable, applied across the whole time-entries page. Recomputed
+// client-side (applyFiltersToDay) rather than round-tripping to the server.
+function FilterBar({ orgs, orgFilter, setOrgFilter, hideNonBillable, setHideNonBillable }) {
+  const active = !!orgFilter || hideNonBillable;
+  return (
+    <div className="panel filter-bar">
+      <span className="muted small">Filter</span>
+      <select className="filter-select" value={orgFilter || ''} onChange={(e) => setOrgFilter(e.target.value || null)}>
+        <option value="">All orgs</option>
+        {orgs.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+      <label className="filter-check">
+        <input type="checkbox" checked={hideNonBillable} onChange={(e) => setHideNonBillable(e.target.checked)} />
+        Hide non-billable
+      </label>
+      {active && (
+        <button className="btn ghost" onClick={() => { setOrgFilter(null); setHideNonBillable(false); }}>Clear</button>
+      )}
+    </div>
+  );
+}
+
+// Replaces the old vertical "Days" sidebar: always shows the selected week's 7 tiles (real data
+// or an empty placeholder), Previous/Today/Next to page between weeks, and a week-level
+// per-client hour total underneath.
+function WeekStrip({ section, days, weekStart, selectedDate, onSelectDate, onShiftWeek, onToday, pending, reviewedDates }) {
+  const unresolved = pending.filter((p) => !p.resolved && p.type === 'time_entry_comment');
+  const countFor = (date) => unresolved.filter((p) => p.date === date).length;
+  const byDate = new Map(days.map((d) => [d.date, d]));
+  const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const weekDays = weekDates.map((date) => byDate.get(date)).filter(Boolean);
+  // days is most-recent-first (see render.mjs), so the last element is the oldest on record.
+  const earliestDate = days.length ? days[days.length - 1].date : null;
+  const canGoBack = !earliestDate || addDays(weekStart, -7) >= startOfWeek(earliestDate);
+  const weekTotals = mergeClientHours(weekDays);
+
+  return (
+    <div className="panel week-strip">
+      <div className="panel-head">
+        <h2>{fmtDay(weekDates[0])} – {fmtDay(weekDates[6])}</h2>
+        <span className="spacer" />
+        <Badge section={section} />
+      </div>
+      <div className="week-strip-nav">
+        <button className="btn ghost" onClick={() => onShiftWeek(-7)} disabled={!canGoBack}>‹ Previous</button>
+        <button className="btn ghost" onClick={onToday}>Today</button>
+        <button className="btn ghost" onClick={() => onShiftWeek(7)}>Next ›</button>
+      </div>
+      <div className="week-tiles">
+        {weekDates.map((date) => {
+          const d = byDate.get(date);
+          return (
+            <button
+              key={date}
+              className={`week-tile ${date === selectedDate ? 'active' : ''} ${!d ? 'empty' : ''}`}
+              onClick={() => onSelectDate(date)}
+            >
+              <span className="week-tile-name">{fmtDay(date)}</span>
+              {d ? <DayHours day={d} /> : <span className="muted num">0h</span>}
+              <span className="week-tile-flags">
+                {reviewedDates.has(date) && <span className="rev-chip" title="Reviewed"><Icon name="check" /></span>}
+                {countFor(date) > 0 && <span className="fb-count"><Icon name="comment" />{countFor(date)}</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {Object.keys(weekTotals).length > 0 && (
+        <div className="meta-rows small" style={{ marginTop: 10 }}>
+          <div><span className="muted">This week</span>{' '}<OrgTotals day={{ client_hours: weekTotals }} /></div>
+        </div>
+      )}
+      {unresolved.length > 0 && (
+        <p className="small pending-note" style={{ marginTop: 10 }}>
+          <Icon name="alert" /> {unresolved.length} comment{unresolved.length > 1 ? 's' : ''} queued — run
+          {' '}<code>/time-logger feedback</code> to apply.
+        </p>
+      )}
     </div>
   );
 }
 
 function TimeEntriesPage({ section, pending, submit, remove }) {
   const days = section?.data?.days || [];
-  const [sel, setSel] = useState(0);
-  const day = days[sel];
-  const unresolved = pending.filter((p) => !p.resolved && p.type === 'time_entry_comment');
-  const countFor = (date) => unresolved.filter((p) => p.date === date).length;
-  const { reviewed, toggle } = useReviewed();
-  const reviewedDates = new Set(reviewed);
-  const [revBusy, setRevBusy] = useState(false);
-  const toggleReviewed = async (date) => {
-    setRevBusy(true);
-    try { await toggle(date, !reviewedDates.has(date)); } finally { setRevBusy(false); }
+
+  // undefined = the user hasn't touched the org filter yet, so default to CONFIG.org (client.org
+  // in capabilities.yml — "the org this install logs time for", already exactly the concept
+  // "default org to isolate to" means; no separate config key to keep in sync with it). CONFIG
+  // itself only populates once the store's initial fetch resolves, so this can't just be a
+  // useState(CONFIG.org) initializer (would freeze at whatever CONFIG.org was — usually still
+  // '' — on the very first render); recomputing the fallback every render picks it up live.
+  // null (once the user explicitly picks "All orgs") is a real, distinct choice from "untouched".
+  const [orgFilterOverride, setOrgFilterOverride] = useState(undefined);
+  const orgFilter = orgFilterOverride !== undefined ? orgFilterOverride : (CONFIG.org || null);
+  const [hideNonBillable, setHideNonBillable] = useState(true);
+  const filtersActive = !!orgFilter || hideNonBillable;
+  // Same dates either way — filtering only ever drops entries within a day, never a day itself —
+  // so everything downstream (week nav, day lookup, "earliest date on record") stays correct
+  // whether or not a filter is active.
+  const filteredDays = useMemo(
+    () => (filtersActive ? days.map((d) => applyFiltersToDay(d, { org: orgFilter, hideNonBillable })) : days),
+    [days, orgFilter, hideNonBillable]
+  );
+  // Every org actually in use across all loaded days (not just the visible week), so the
+  // dropdown doesn't go empty just because this week happens not to include one.
+  const orgOptions = useMemo(() => {
+    const set = new Set();
+    for (const d of days) {
+      for (const c of Object.keys(d.client_hours || {})) {
+        const o = clientMeta(c).org;
+        if (o) set.add(o);
+      }
+    }
+    return [...set].sort();
+  }, [days]);
+
+  // null until the user actually navigates — until then, default to the most recent day with
+  // data (same default the old index-based sidebar had), not necessarily today.
+  const [selectedDateOverride, setSelectedDateOverride] = useState(null);
+  const [weekStartOverride, setWeekStartOverride] = useState(null);
+  const selectedDate = selectedDateOverride ?? days[0]?.date ?? toISO(new Date());
+  const weekStart = weekStartOverride ?? startOfWeek(selectedDate);
+  const day = filteredDays.find((d) => d.date === selectedDate);
+
+  const [selectedEntry, setSelectedEntry] = useState(null); // { entry } | null — always for `day`
+
+  const selectDate = (date) => {
+    setSelectedDateOverride(date);
+    setWeekStartOverride(startOfWeek(date));
+    setSelectedEntry(null);
   };
+  const shiftWeek = (deltaDays) => {
+    const dayIndex = new Date(`${selectedDate}T12:00:00`).getDay();
+    const newWeekStart = addDays(weekStart, deltaDays);
+    setWeekStartOverride(newWeekStart);
+    setSelectedDateOverride(addDays(newWeekStart, dayIndex));
+    setSelectedEntry(null);
+  };
+  const goToday = () => {
+    const today = toISO(new Date());
+    setSelectedDateOverride(today);
+    setWeekStartOverride(startOfWeek(today));
+    setSelectedEntry(null);
+  };
+  const onSelectEntry = (entry) => {
+    setSelectedEntry((prev) => (prev && prev.entry.letter === entry.letter ? null : { entry }));
+  };
+
   const { reviewedEntries, toggle: toggleEntry } = useReviewedEntries();
   const reviewedEntryKeys = new Set(reviewedEntries.map((e) => `${e.date}|${e.heading}`));
+  // A day counts as reviewed when every one of its (currently filtered-in) entries has been
+  // individually marked reviewed — no separate day-level flag to fall out of sync with that.
+  const isDayReviewed = (d) => d.entries.length > 0 && d.entries.every((e) => reviewedEntryKeys.has(`${d.date}|${e.heading}`));
+  const reviewedDates = new Set(filteredDays.filter(isDayReviewed).map((d) => d.date));
+  const [revBusy, setRevBusy] = useState(false);
+  // "Mark reviewed" is now a bulk shortcut over the same per-entry state the grid's own checkmarks
+  // use — marks (or unmarks) every entry in the day at once rather than writing a separate flag.
+  const toggleReviewed = async (d) => {
+    setRevBusy(true);
+    const target = !isDayReviewed(d);
+    try {
+      for (const e of d.entries) await toggleEntry(d.date, e.heading, target);
+    } finally { setRevBusy(false); }
+  };
+  // A selection can outlive a filter change that hides it (e.g. you select an entry, then flip
+  // "Hide non-billable" and it happened to be non-billable) — rather than clearing it, just stop
+  // treating it as visible; toggling the filter back off naturally restores it with no extra state.
+  const selectedVisible = !!(selectedEntry && day && day.entries.some((e) => e.letter === selectedEntry.entry.letter));
 
   return (
-    <div className="te-layout">
-      <aside className="day-list">
-        <div className="panel">
-          <div className="panel-head"><h2>Days</h2><span className="spacer" /><Badge section={section} /></div>
-          {days.map((d, i) => (
-            <button key={d.date} className={`day-item ${i === sel ? 'active' : ''}`} onClick={() => setSel(i)}>
-              <span className="day-name">{fmtDay(d.date)}</span>
-              <span className="spacer" />
-              {reviewedDates.has(d.date) && <span className="rev-chip" title="Reviewed"><Icon name="check" /></span>}
-              {countFor(d.date) > 0 && <span className="fb-count"><Icon name="comment" />{countFor(d.date)}</span>}
-              <DayHours day={d} />
-            </button>
-          ))}
-          {unresolved.length > 0 && (
-            <p className="small pending-note" style={{ marginTop: 10 }}>
-              <Icon name="alert" /> {unresolved.length} comment{unresolved.length > 1 ? 's' : ''} queued — run
-              {' '}<code>/time-logger feedback</code> to apply.
-            </p>
+    <div className="te-week-layout">
+      <WeekStrip
+        section={section} days={filteredDays} weekStart={weekStart} selectedDate={selectedDate}
+        onSelectDate={selectDate} onShiftWeek={shiftWeek} onToday={goToday}
+        pending={pending} reviewedDates={reviewedDates}
+      />
+      <FilterBar
+        orgs={orgOptions} orgFilter={orgFilter} setOrgFilter={setOrgFilterOverride}
+        hideNonBillable={hideNonBillable} setHideNonBillable={setHideNonBillable}
+      />
+      <div className="te-body">
+        <div className="te-main">
+          {!day ? <div className="panel"><p className="muted">No time entries rendered yet.</p></div> : (
+            <>
+              <div className="panel day-meta">
+                <div className="panel-head">
+                  <h2>{new Date(`${day.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
+                  <button
+                    className={`rev-btn ${reviewedDates.has(day.date) ? 'on' : ''}`}
+                    onClick={() => toggleReviewed(day)} disabled={revBusy}
+                    title={reviewedDates.has(day.date) ? 'Unmark reviewed' : 'Mark this day as reviewed'}>
+                    {reviewedDates.has(day.date) ? <><Icon name="check" />Reviewed</> : 'Mark reviewed'}
+                  </button>
+                  <span className="spacer" />
+                  {day.updated_at && <span className="small dim" title={new Date(day.updated_at).toLocaleString()}>drafted {ageLabel(day.updated_at)} ·</span>}
+                  <span className="small dim num" title="Sum of entry durations (billable); entries may overlap">{day.hours}</span>
+                  {day.span && <span className="small muted num" title="First start to last end">· {day.span}</span>}
+                </div>
+                <div className="meta-rows small">
+                  {day.client_hours && Object.keys(day.client_hours).length > 0 && (
+                    <div><span className="muted">Clients</span>{' '}<OrgTotals day={day} /></div>
+                  )}
+                  {day.tickets && <div><span className="muted">Tickets</span> {day.tickets}</div>}
+                  {day.repos && <div><span className="muted">Repos</span> {day.repos.replace(/`/g, '')}</div>}
+                  {day.prs && <div><span className="muted">PRs</span> {day.prs}</div>}
+                </div>
+              </div>
+              {day.entries.some((e) => e.range) && (
+                <div className="panel">
+                  <DayGrid
+                    key={day.date} day={day} pending={pending} submit={submit} remove={remove}
+                    reviewedEntryKeys={reviewedEntryKeys} toggleEntry={toggleEntry} onSelectEntry={onSelectEntry}
+                    selectedLetter={selectedEntry?.entry?.letter}
+                  />
+                </div>
+              )}
+              {day.entries.some((e) => !e.range) && (
+                <div className="panel">
+                  <div className="panel-head"><h2>Unscheduled</h2></div>
+                  <p className="small muted" style={{ marginTop: -4, marginBottom: 10 }}>
+                    No parseable time range — shown here instead of on the grid above.
+                  </p>
+                  {day.entries.filter((e) => !e.range).map((e) => {
+                    const entryKey = `${day.date}|${e.heading}`;
+                    return (
+                      <Entry key={entryKey} day={day} entry={e} pending={pending} submit={submit} remove={remove}
+                        isReviewed={reviewedEntryKeys.has(entryKey)}
+                        toggleReviewed={(val) => toggleEntry(day.date, e.heading, val)} />
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
-      </aside>
-      <div className="te-main">
-        {!day ? <div className="panel"><p className="muted">No time entries rendered yet.</p></div> : (
-          <>
-            <div className="panel day-meta">
-              <div className="panel-head">
-                <h2>{new Date(`${day.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
-                <button
-                  className={`rev-btn ${reviewedDates.has(day.date) ? 'on' : ''}`}
-                  onClick={() => toggleReviewed(day.date)} disabled={revBusy}
-                  title={reviewedDates.has(day.date) ? 'Unmark reviewed' : 'Mark this day as reviewed'}>
-                  {reviewedDates.has(day.date) ? <><Icon name="check" />Reviewed</> : 'Mark reviewed'}
-                </button>
-                <span className="spacer" />
-                {day.updated_at && <span className="small dim" title={new Date(day.updated_at).toLocaleString()}>drafted {ageLabel(day.updated_at)} ·</span>}
-                <span className="small dim num" title="Sum of entry durations (billable); entries may overlap">{day.hours}</span>
-                {day.span && <span className="small muted num" title="First start to last end">· {day.span}</span>}
-              </div>
-              <div className="meta-rows small">
-                {day.client_hours && Object.keys(day.client_hours).length > 0 && (
-                  <div><span className="muted">Clients</span>{' '}<OrgTotals day={day} /></div>
-                )}
-                {day.tickets && <div><span className="muted">Tickets</span> {day.tickets}</div>}
-                {day.repos && <div><span className="muted">Repos</span> {day.repos.replace(/`/g, '')}</div>}
-                {day.prs && <div><span className="muted">PRs</span> {day.prs}</div>}
-              </div>
-            </div>
-            <div className="panel">
-              <DayTimeline day={day} />
-              {day.entries.map((e) => {
-                const entryKey = `${day.date}|${e.heading}`;
-                return (
-                  <Entry key={entryKey} day={day} entry={e} pending={pending} submit={submit} remove={remove}
-                    isReviewed={reviewedEntryKeys.has(entryKey)}
-                    toggleReviewed={(val) => toggleEntry(day.date, e.heading, val)} />
-                );
-              })}
-            </div>
-          </>
-        )}
+        {/* Always present (not conditionally mounted) — reserves its width permanently so
+            selecting/deselecting an entry never reflows the grid next to it. */}
+        <div className="panel te-side-panel">
+          <div className="panel-head">
+            <h2>Entry detail</h2>
+            <span className="spacer" />
+            {selectedVisible && <button className="btn ghost" onClick={() => setSelectedEntry(null)}>Close</button>}
+          </div>
+          {selectedVisible ? (
+            <Entry
+              day={day} entry={selectedEntry.entry} pending={pending} submit={submit} remove={remove}
+              isReviewed={reviewedEntryKeys.has(`${day.date}|${selectedEntry.entry.heading}`)}
+              toggleReviewed={(val) => toggleEntry(day.date, selectedEntry.entry.heading, val)}
+            />
+          ) : (
+            <p className="muted small">Click an entry on the grid to see its full detail here.</p>
+          )}
+        </div>
       </div>
     </div>
   );

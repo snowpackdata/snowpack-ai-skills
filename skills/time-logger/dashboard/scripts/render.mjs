@@ -127,7 +127,9 @@ function parseTimeEntries(md, date) {
 
 async function renderTimeEntries() {
   const dir = join(DATA_HOME, 'time_logs');
-  const files = (await listMd(dir)).filter((f) => /^time_entries_\d{8}\.md$/.test(f)).slice(-5);
+  // Capped at a year, not the ~5 days this used to be — the dashboard's week-strip nav pages
+  // backward through real weeks, so it needs more than a handful of recent days available.
+  const files = (await listMd(dir)).filter((f) => /^time_entries_\d{8}\.md$/.test(f)).slice(-365);
   const days = [];
   for (const f of files) {
     const md = await read(join(dir, f));

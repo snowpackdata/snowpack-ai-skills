@@ -303,6 +303,35 @@ a.chip:hover, a.ticket:hover { text-decoration: underline; }
 .day-item .muted { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .other-hours { color: var(--warning); }
 .te-main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+/* Time entries page: week strip (top, full width) + main content / side panel (below).
+   Deliberately its own classes, not a reuse of .te-layout/.day-list/.day-item above — those
+   stay exactly as they were for Todos and Summaries, which still use the vertical sidebar. */
+.te-week-layout { display: flex; flex-direction: column; gap: 20px; }
+.week-strip-nav { display: flex; gap: 8px; margin-bottom: 10px; }
+.week-tiles { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.week-tile {
+  display: flex; flex-direction: column; gap: 4px; background: none; border: 1px solid var(--hairline);
+  border-radius: 8px; color: var(--ink-2); padding: 8px 6px; cursor: pointer; font-size: 12.5px; text-align: left;
+}
+.week-tile:hover { background: var(--surface-2); color: var(--ink); }
+.week-tile.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.week-tile.empty { opacity: 0.55; }
+.week-tile-name { font-weight: 600; }
+.week-tile .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.week-tile-flags { display: flex; gap: 6px; align-items: center; min-height: 13px; }
+.filter-bar { display: flex; align-items: center; gap: 10px; padding: 10px 20px; }
+.filter-select {
+  background: var(--surface-2); color: var(--ink); border: 1px solid var(--hairline); border-radius: 6px;
+  padding: 4px 8px; font-size: 12.5px; cursor: pointer;
+}
+.filter-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
+.filter-check input { accent-color: var(--accent); cursor: pointer; }
+.te-body { display: flex; gap: 20px; align-items: flex-start; }
+.te-body .te-main { flex: 1 1 auto; min-width: 0; }
+.te-side-panel { flex: 0 0 380px; position: sticky; top: 24px; }
+@media (max-width: 1100px) { .te-body { flex-direction: column; } .te-side-panel { flex: 1 1 auto; width: 100%; position: static; } }
+
 /* Summaries: the detail panel hugs a readable measure instead of stretching across the page
    with a capped text column inside it. */
 .summaries-layout { grid-template-columns: 224px minmax(0, 820px); }
@@ -335,6 +364,66 @@ a.chip:hover, a.ticket:hover { text-decoration: underline; }
 .tl-gap { position: absolute; top: 0; height: 5px; border-radius: 3px; background: var(--warning-soft); border: 1px solid var(--warning); }
 .tl-gaplbl { font-size: 12px; color: var(--warning); margin-top: 6px; }
 
+/* day grid: vertical 15-min schedule. Each cell hosts a full Entry card (see .entry-card
+   below) positioned/sized by time; drag its header to move, its top/bottom edge to resize. */
+.dg-wrap { margin: 4px 0 16px; }
+.dg { position: relative; display: flex; }
+.dg-hours { position: relative; width: 40px; flex: 0 0 auto; }
+.dg-hour-label { position: absolute; right: 8px; transform: translateY(-50%); font-size: 11px; color: var(--ink-muted); font-family: var(--font-mono); }
+/* 15-min gridlines every 30px, hour lines (brighter, on top) every 120px — kept in sync with
+   PX_PER_HOUR (120) in App.jsx by hand; there's no single source of truth for the two. d0 is
+   always a whole hour, so the track's top edge lines up with an hour line with no offset needed. */
+.dg-track {
+  /* --surface (the page's own panel color), not --lane/--surface-2 — those are the exact same
+     hex as .entry-card's background below, so cards were invisible against the track. */
+  position: relative; flex: 1; border-radius: 8px; background-color: var(--surface);
+  background-image:
+    repeating-linear-gradient(to bottom, var(--hairline) 0 1px, transparent 1px 120px),
+    repeating-linear-gradient(to bottom, color-mix(in srgb, var(--hairline) 45%, transparent) 0 1px, transparent 1px 30px);
+}
+.dg-cell { position: absolute; box-sizing: border-box; padding: 3px; }
+.dg-cell.selected { z-index: 4; }
+.dg-cell.selected .entry-card { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft), 0 1px 3px rgba(0, 0, 0, 0.3); }
+.dg-resize-handle { position: absolute; left: 3px; right: 3px; height: 6px; cursor: ns-resize; z-index: 2; }
+.dg-resize-handle.top { top: 0; }
+.dg-resize-handle.bottom { bottom: 0; }
+.dg-gaplbl { font-size: 12px; color: var(--warning); margin-top: 8px; }
+
+/* the card variant of .entry (below) fills its .dg-cell exactly. The head row (time/title/
+   tags/toggles) stays put; only .entry-scroll (notes, tickets, comments) scrolls when the
+   cell's time-proportional height is shorter than the content (a short entry with long notes) —
+   so you never lose track of which entry you're reading by scrolling its own header away. */
+.entry-card {
+  position: relative; overflow: hidden; height: 100%; box-sizing: border-box; padding: 8px 12px 8px 14px;
+  background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+/* .entry's base grid reserves a 28px + 12px-gap column for .entry-badge — card mode never
+   renders that div (the letter moves inline into entry-head instead), so collapse to one
+   column or that space sits there empty. Doubled-up selector (not just .entry-card) so this
+   reliably beats .entry's own grid-template-columns — same specificity, and .entry is declared
+   later in this file, so a single-class override here would silently lose that tie. */
+.entry.entry-card {
+  grid-template-columns: minmax(0, 1fr);
+}
+.entry-card .entry-main { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.entry-card .entry-head { flex: 0 0 auto; }
+.entry-badge-inline { font-family: var(--font-mono); font-size: 11px; color: var(--accent); flex: 0 0 auto; }
+.entry-badge-inline.meet { color: var(--meet); }
+.entry-card .entry-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.entry-card .comment-btn, .entry-card .entry-review-btn, .entry-card .entry-nonbillable-btn,
+.te-side-panel .comment-btn, .te-side-panel .entry-review-btn, .te-side-panel .entry-nonbillable-btn { opacity: 1; }
+/* Card mode: pinned to the card's own top-right corner regardless of how entry-head wraps —
+   never pushed out of the card's box by a long title or a narrow shared lane. Floats over
+   whatever's underneath (backed by a translucent chip so it stays legible either way). */
+.entry-card .entry-toggles {
+  position: absolute; top: 4px; right: 4px; z-index: 3;
+  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
+  padding: 2px; border-radius: 999px; backdrop-filter: blur(2px);
+}
+.drag-handle { cursor: grab; }
+.drag-handle:active { cursor: grabbing; }
+
 /* entries */
 .entry { padding: 14px 0; border-bottom: 1px solid var(--hairline); display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; }
 .entry:last-child { border-bottom: 0; }
@@ -343,8 +432,9 @@ a.chip:hover, a.ticket:hover { text-decoration: underline; }
 .entry-main { min-width: 0; }
 .entry-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .entry-head .spacer { flex: 1; }
+.entry-toggles { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .entry-head .time { color: var(--ink-muted); font-size: 12px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
-.entry-head .title { font-weight: 600; font-size: 14.5px; }
+.entry-head .title { font-weight: 500; font-size: 12.5px; }
 .entry-head .hours { color: var(--ink-2); font-size: 12px; font-family: var(--font-mono); }
 .entry-body { color: var(--ink-2); margin: 5px 0 0; font-size: 13.5px; }
 .mtag { display: inline-block; font-size: 10px; letter-spacing: 0.08em; color: var(--meet); border: 1px solid color-mix(in srgb, var(--meet) 50%, transparent); border-radius: 3px; padding: 0 5px; }

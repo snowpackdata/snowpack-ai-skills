@@ -15,7 +15,6 @@ const DIST = join(ROOT, 'dist');
 const DATA = join(DATA_HOME, 'dashboard', 'data');
 const FEEDBACK = join(DATA_HOME, 'dashboard', 'feedback');
 const PENDING = join(FEEDBACK, 'pending.json');
-const REVIEWED = join(FEEDBACK, 'reviewed.json');
 const REVIEWED_ENTRIES = join(FEEDBACK, 'reviewed_entries.json');
 const TIME_LOGS = join(DATA_HOME, 'time_logs');
 const PORT = process.env.PORT || get('dashboard.port', 4680);
@@ -28,11 +27,6 @@ const MIME = {
 
 async function readPending() {
   try { return JSON.parse(await readFile(PENDING, 'utf8')); }
-  catch { return []; }
-}
-
-async function readReviewed() {
-  try { return JSON.parse(await readFile(REVIEWED, 'utf8')); }
   catch { return []; }
 }
 
@@ -49,6 +43,26 @@ const JOBS = {
 };
 const jobRuns = {}; // name -> { running, started_at, exit_code, finished_at }
 const LOGS_DIR = join(DATA_HOME, 'dashboard', 'logs'); // one <name>.log per job, same key as JOBS
+
+// Shared by the non-billable and time-range handlers below: both match an entry by its
+// heading with the toggleable [non-billable] suffix stripped, since that suffix isn't part
+// of the entry's stable identity.
+const stableOf = (line) => line.replace(/\s*\[non-billable\]\s*$/i, '').trim();
+
+// "9:00 AM – 9:45 AM" — always explicit AM/PM on both sides (simpler to generate than
+// reproducing the omit-when-unambiguous style some entries have on disk; render.mjs's
+// parseRange accepts either form).
+function formatHourRange(startHour, endHour) {
+  const fmt = (hour) => {
+    const totalMinutes = Math.round(hour * 60);
+    let h = Math.floor(totalMinutes / 60) % 24;
+    const m = totalMinutes % 60;
+    const suffix = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
+  };
+  return `${fmt(startHour)} – ${fmt(endHour)}`;
+}
 
 async function serveFile(res, path) {
   try {
@@ -137,31 +151,9 @@ const server = createServer(async (req, res) => {
     return res.end(JSON.stringify({ name, text: tail, running: !!jobRuns[name]?.running, fetched_at: new Date().toISOString() }));
   }
 
-  // Reviewed days: dates the user has signed off on in the UI.
-  if (path === '/api/reviewed' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-    return res.end(JSON.stringify(await readReviewed()));
-  }
-  if (path === '/api/reviewed' && req.method === 'POST') {
-    let body = '';
-    for await (const chunk of req) body += chunk;
-    try {
-      const { date, reviewed } = JSON.parse(body);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new Error('date must be YYYY-MM-DD');
-      const set = new Set(await readReviewed());
-      if (reviewed) set.add(date); else set.delete(date);
-      const list = [...set].sort();
-      await mkdir(FEEDBACK, { recursive: true });
-      await writeFile(REVIEWED, JSON.stringify(list, null, 2));
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ ok: true, reviewed: list }));
-    } catch (e) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ ok: false, error: String(e) }));
-    }
-  }
-
   // Reviewed entries: individual time entries the user has signed off on (by date + heading).
+  // (A day itself has no separate reviewed flag — the dashboard derives "day reviewed" from
+  // every one of its entries being reviewed, so there's nothing day-level to persist here.)
   if (path === '/api/reviewed-entries' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify(await readReviewedEntries()));
@@ -201,7 +193,6 @@ const server = createServer(async (req, res) => {
       if (!heading) throw new Error('heading required');
       const file = join(TIME_LOGS, `time_entries_${date.replace(/-/g, '')}.md`);
       const md = await readFile(file, 'utf8');
-      const stableOf = (line) => line.replace(/\s*\[non-billable\]\s*$/i, '').trim();
       let found = false;
       const updated = md.split('\n').map((line) => {
         if (!line.startsWith('### ') || found) return line;
@@ -214,6 +205,44 @@ const server = createServer(async (req, res) => {
       await writeFile(file, updated.join('\n'));
       // Re-render synchronously so the change is visible on the client's next poll, not just
       // after the next /time-logger refresh.
+      execFileSync('node', ['scripts/render.mjs'], { cwd: ROOT });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: true }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, error: String(e) }));
+    }
+  }
+
+  // Day-view drag/resize: rewrites an entry's time range (and, if present, its "(Xh)"
+  // duration) in place. Same direct-write-then-rerender pattern as non-billable above; only
+  // the time prefix and hours number change, title/client/tags are left untouched.
+  if (path === '/api/entries/time-range' && req.method === 'POST') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const { date, heading, startHour, endHour } = JSON.parse(body);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new Error('date must be YYYY-MM-DD');
+      if (!heading) throw new Error('heading required');
+      if (typeof startHour !== 'number' || typeof endHour !== 'number' || !(startHour >= 0 && endHour <= 24 && startHour < endHour)) {
+        throw new Error('startHour/endHour must be numbers with 0 <= startHour < endHour <= 24');
+      }
+      const file = join(TIME_LOGS, `time_entries_${date.replace(/-/g, '')}.md`);
+      const md = await readFile(file, 'utf8');
+      let found = false;
+      const updated = md.split('\n').map((line) => {
+        if (!line.startsWith('### ') || found) return line;
+        const content = line.slice(4);
+        if (stableOf(content) !== heading) return line;
+        const m = content.match(/^(.+?)\s+—\s+(.*)$/);
+        if (!m) throw new Error('entry line is not in "{time} — {rest}" form');
+        found = true;
+        const durationHours = Math.round((endHour - startHour) * 100) / 100;
+        const newRest = m[2].replace(/(\d+(?:\.\d+)?)h/, `${durationHours}h`);
+        return `### ${formatHourRange(startHour, endHour)} — ${newRest}`;
+      });
+      if (!found) throw new Error('entry not found for that date/heading');
+      await writeFile(file, updated.join('\n'));
       execFileSync('node', ['scripts/render.mjs'], { cwd: ROOT });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ ok: true }));
