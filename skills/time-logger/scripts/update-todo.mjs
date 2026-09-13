@@ -14,7 +14,29 @@
 // flag. Exits 1 if the file is missing or no item matches <id>; exits 2 on a usage error.
 // Writes atomically (temp file + rename).
 import { readFile, writeFile, rename } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseTodosFile, stringifyTodosFile } from './todo-format.mjs';
+
+// This script is distributed two different ways — as-is in the skill repo (a sibling of
+// dashboard/) and copied standalone into <data home>/scripts/ by bootstrap.sh (a sibling of
+// app/dashboard/, not dashboard/) — so a single static relative import can't reach
+// refresh-todo-evidence.mjs in both. Try both layouts; if neither resolves, degrade instead of
+// crashing — recomputing evidence is a side effect of a todo write, not this script's actual
+// job, so its absence shouldn't block the write itself.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REFRESH_EVIDENCE_CANDIDATES = [
+  join(HERE, '../dashboard/scripts/refresh-todo-evidence.mjs'),     // repo layout
+  join(HERE, '../app/dashboard/scripts/refresh-todo-evidence.mjs'), // <data home>/scripts layout
+];
+const refreshEvidencePath = REFRESH_EVIDENCE_CANDIDATES.find(existsSync);
+let refreshTodoEvidence = null;
+if (refreshEvidencePath) {
+  ({ refreshTodoEvidence } = await import(refreshEvidencePath));
+} else {
+  console.error('WARN: refresh-todo-evidence.mjs not found in either expected layout — skipping evidence refresh');
+}
 
 const USAGE = 'usage: update-todo.mjs <todos_file> <id> [--state pending|in_progress|done] '
   + '[--priority high|medium|low|none] [--group <name>] [--text "..."] [--note "..."]\n'
@@ -63,6 +85,7 @@ async function main() {
     data.todos.splice(idx, 1);
     await writeFile(`${file}.tmp`, stringifyTodosFile(data));
     await rename(`${file}.tmp`, file);
+    await refreshTodoEvidence?.().catch((e) => console.error('WARN: evidence refresh failed:', e.message));
     console.log(`deleted ${id}`);
     return;
   }
@@ -73,6 +96,10 @@ async function main() {
   const tmp = `${file}.tmp`;
   await writeFile(tmp, stringifyTodosFile(data));
   await rename(tmp, file);
+  // Todos changed: recompute evidence (bounded scan — see refresh-todo-evidence.mjs) so the
+  // dashboard's next render picks up a fresh sidecar instead of a stale one. Best-effort — a
+  // failure here shouldn't undo an otherwise-successful todo update.
+  await refreshTodoEvidence?.().catch((e) => console.error('WARN: evidence refresh failed:', e.message));
   console.log(`updated ${id}: ${JSON.stringify({ ...patch, ...(notes.length ? { notes } : {}) })}`);
 }
 

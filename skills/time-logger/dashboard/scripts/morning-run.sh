@@ -70,6 +70,9 @@ rc=${pipestatus[1]}
 log "morning run exit=$rc"
 
 # Belt and braces: make sure the store is rendered and the server is up even if the run died.
+# Todo evidence isn't part of render.mjs anymore (see entries-store.mjs/refresh-todo-evidence.mjs) —
+# refresh it first so render.mjs's todos section picks up a fresh sidecar.
+node "$APP/scripts/refresh-todo-evidence.mjs" >> "$LOG" 2>&1 || log "WARN: todo evidence refresh failed"
 node "$APP/scripts/render.mjs" >> "$LOG" 2>&1 || log "WARN: render failed"
 if ! curl -sf -o /dev/null "http://localhost:$PORT/data/meta.json"; then
   launchctl kickstart "gui/$(id -u)/com.time-logger.dash-server" >> "$LOG" 2>&1

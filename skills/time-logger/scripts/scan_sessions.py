@@ -17,12 +17,25 @@ from typing import Optional
 
 LOCAL_TZ = datetime.now().astimezone().tzinfo
 
+# A background-task/Monitor notification is injected as plain prose starting with this marker
+# (the literal `<task-notification>` tag, if present at all, is nested further inside the body,
+# not at the start — a prefix check on that tag alone never matches the real wrapper shape).
+_TASK_NOTIFICATION_PREFIXES = ("[SYSTEM NOTIFICATION - NOT USER INPUT]", "<task-notification>")
+
 # Claude-Code-infrastructure noise (login/logout notices, context-compaction notices,
 # background-task pings) — syntactically identifiable, never work-signal, safe to drop before
 # an excerpt ever costs a token. Matched on the start of the message body specifically (not a
 # scan across the whole file) so a real message that happens to mention one of these in passing
 # is never affected.
-_BOILERPLATE_PREFIXES = ("<local-command-stdout>", "<local-command-caveat>", "<task-notification>")
+_BOILERPLATE_PREFIXES = ("<local-command-stdout>", "<local-command-caveat>") + _TASK_NOTIFICATION_PREFIXES
+
+# Of those, a background-task notification is the one kind with zero human action behind it —
+# a monitor/subagent waking an otherwise-idle session and Claude replying to it. Unlike a local
+# command (the user ran something themselves) or its stdout, this shouldn't move first/last
+# activity or count as a turn at all: a monitor firing at 3 AM would otherwise draft an entry
+# that starts at 3 AM even though nobody was working. The other two boilerplate prefixes are
+# still real human-initiated activity, just not excerpt-worthy content.
+_AUTOMATED_PREFIXES = _TASK_NOTIFICATION_PREFIXES
 
 
 def _sentence_truncate(text: str, limit: int = 400, min_length: int = 200) -> str:
@@ -86,6 +99,10 @@ def scan_file(filepath: str, target_date: str) -> Optional[dict]:
     first_ts = None
     last_ts = None
     excerpts = []
+    # Set right after an automated-notification turn, consumed by the very next assistant turn
+    # (its automatic acknowledgment) — see _AUTOMATED_PREFIXES. Together they're one non-work
+    # event, not two turns.
+    skip_next_assistant = False
 
     try:
         with open(filepath) as f:
@@ -115,11 +132,6 @@ def scan_file(filepath: str, target_date: str) -> Optional[dict]:
                 if t not in ("user", "assistant"):
                     continue
 
-                turns += 1
-                if first_ts is None:
-                    first_ts = local_dt
-                last_ts = local_dt
-
                 content = obj.get("message", {}).get("content", "")
                 text = ""
                 if isinstance(content, list):
@@ -128,8 +140,21 @@ def scan_file(filepath: str, target_date: str) -> Optional[dict]:
                             text += block.get("text", "")
                 elif isinstance(content, str):
                     text = content
-
                 text = text.strip()
+
+                if t == "user" and text.startswith(_AUTOMATED_PREFIXES):
+                    skip_next_assistant = True
+                    continue
+                if t == "assistant" and skip_next_assistant:
+                    skip_next_assistant = False
+                    continue
+                skip_next_assistant = False
+
+                turns += 1
+                if first_ts is None:
+                    first_ts = local_dt
+                last_ts = local_dt
+
                 if text and not text.startswith(("<command",) + _BOILERPLATE_PREFIXES) and len(text) > 20:
                     excerpts.append(f"[{t}] {_sentence_truncate(text)}")
 

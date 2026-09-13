@@ -77,7 +77,15 @@ cd "$APP"
 rc=${pipestatus[1]}
 log "claude fetch exit=$rc"
 
+log "github PR fetch start"
 node "$APP/scripts/fetch-github-prs.mjs" >> "$LOG" 2>&1 || log "WARN: github PR fetch failed"
+log "github PR fetch done"
+# Todo evidence isn't part of render.mjs anymore (see entries-store.mjs/refresh-todo-evidence.mjs) —
+# refresh it first so render.mjs's todos section picks up a fresh sidecar.
+log "todo evidence refresh start"
+node "$APP/scripts/refresh-todo-evidence.mjs" >> "$LOG" 2>&1 || log "WARN: todo evidence refresh failed"
+log "todo evidence refresh done"
+log "render start"
 node "$APP/scripts/render.mjs" >> "$LOG" 2>&1
 log "render done"
 

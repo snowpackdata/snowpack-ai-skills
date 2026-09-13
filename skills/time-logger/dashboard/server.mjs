@@ -8,6 +8,8 @@ import { join, extname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DATA_HOME, get, expandHome } from './scripts/capabilities.mjs';
 import { parseTodosFile, stringifyTodosFile } from './scripts/todo-format.mjs';
+import { getDay, getRange, getBounds, setEntryField } from './scripts/entries-store.mjs';
+import { refreshTodoEvidence } from './scripts/refresh-todo-evidence.mjs';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const DIST = join(ROOT, 'dist');
@@ -16,7 +18,6 @@ const DATA = join(DATA_HOME, 'dashboard', 'data');
 const FEEDBACK = join(DATA_HOME, 'dashboard', 'feedback');
 const PENDING = join(FEEDBACK, 'pending.json');
 const REVIEWED_ENTRIES = join(FEEDBACK, 'reviewed_entries.json');
-const TIME_LOGS = join(DATA_HOME, 'time_logs');
 const PORT = process.env.PORT || get('dashboard.port', 4680);
 
 const MIME = {
@@ -43,26 +44,6 @@ const JOBS = {
 };
 const jobRuns = {}; // name -> { running, started_at, exit_code, finished_at }
 const LOGS_DIR = join(DATA_HOME, 'dashboard', 'logs'); // one <name>.log per job, same key as JOBS
-
-// Shared by the non-billable and time-range handlers below: both match an entry by its
-// heading with the toggleable [non-billable] suffix stripped, since that suffix isn't part
-// of the entry's stable identity.
-const stableOf = (line) => line.replace(/\s*\[non-billable\]\s*$/i, '').trim();
-
-// "9:00 AM – 9:45 AM" — always explicit AM/PM on both sides (simpler to generate than
-// reproducing the omit-when-unambiguous style some entries have on disk; render.mjs's
-// parseRange accepts either form).
-function formatHourRange(startHour, endHour) {
-  const fmt = (hour) => {
-    const totalMinutes = Math.round(hour * 60);
-    let h = Math.floor(totalMinutes / 60) % 24;
-    const m = totalMinutes % 60;
-    const suffix = h >= 12 ? 'PM' : 'AM';
-    const h12 = h % 12 || 12;
-    return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
-  };
-  return `${fmt(startHour)} – ${fmt(endHour)}`;
-}
 
 async function serveFile(res, path) {
   try {
@@ -183,29 +164,15 @@ const server = createServer(async (req, res) => {
   // Non-billable: unlike "reviewed", this changes what the entry actually means, so it's
   // written into the entry's own heading line in the real time-entries file (not a JSON
   // sidecar) — that way it survives everywhere the entry goes (Notes API uploads, my_time's
-  // parser), not just this dashboard.
+  // parser), not just this dashboard. Writes through entries-store.mjs, which touches only
+  // this one file — no re-render step: reads are live (see /api/entries/range below), so the
+  // very next one already sees this write.
   if (path === '/api/entries/non-billable' && req.method === 'POST') {
     let body = '';
     for await (const chunk of req) body += chunk;
     try {
       const { date, heading, nonBillable } = JSON.parse(body);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new Error('date must be YYYY-MM-DD');
-      if (!heading) throw new Error('heading required');
-      const file = join(TIME_LOGS, `time_entries_${date.replace(/-/g, '')}.md`);
-      const md = await readFile(file, 'utf8');
-      let found = false;
-      const updated = md.split('\n').map((line) => {
-        if (!line.startsWith('### ') || found) return line;
-        const content = line.slice(4);
-        if (stableOf(content) !== heading) return line;
-        found = true;
-        return '### ' + (nonBillable ? `${stableOf(content)} [non-billable]` : stableOf(content));
-      });
-      if (!found) throw new Error('entry not found for that date/heading');
-      await writeFile(file, updated.join('\n'));
-      // Re-render synchronously so the change is visible on the client's next poll, not just
-      // after the next /time-logger refresh.
-      execFileSync('node', ['scripts/render.mjs'], { cwd: ROOT });
+      await setEntryField(date, heading, { nonBillable });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ ok: true }));
     } catch (e) {
@@ -215,41 +182,52 @@ const server = createServer(async (req, res) => {
   }
 
   // Day-view drag/resize: rewrites an entry's time range (and, if present, its "(Xh)"
-  // duration) in place. Same direct-write-then-rerender pattern as non-billable above; only
-  // the time prefix and hours number change, title/client/tags are left untouched.
+  // duration) in place. Same single-file write as non-billable above; only the time prefix
+  // and hours number change, title/client/tags are left untouched.
   if (path === '/api/entries/time-range' && req.method === 'POST') {
     let body = '';
     for await (const chunk of req) body += chunk;
     try {
       const { date, heading, startHour, endHour } = JSON.parse(body);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new Error('date must be YYYY-MM-DD');
-      if (!heading) throw new Error('heading required');
-      if (typeof startHour !== 'number' || typeof endHour !== 'number' || !(startHour >= 0 && endHour <= 24 && startHour < endHour)) {
-        throw new Error('startHour/endHour must be numbers with 0 <= startHour < endHour <= 24');
-      }
-      const file = join(TIME_LOGS, `time_entries_${date.replace(/-/g, '')}.md`);
-      const md = await readFile(file, 'utf8');
-      let found = false;
-      const updated = md.split('\n').map((line) => {
-        if (!line.startsWith('### ') || found) return line;
-        const content = line.slice(4);
-        if (stableOf(content) !== heading) return line;
-        const m = content.match(/^(.+?)\s+—\s+(.*)$/);
-        if (!m) throw new Error('entry line is not in "{time} — {rest}" form');
-        found = true;
-        const durationHours = Math.round((endHour - startHour) * 100) / 100;
-        const newRest = m[2].replace(/(\d+(?:\.\d+)?)h/, `${durationHours}h`);
-        return `### ${formatHourRange(startHour, endHour)} — ${newRest}`;
-      });
-      if (!found) throw new Error('entry not found for that date/heading');
-      await writeFile(file, updated.join('\n'));
-      execFileSync('node', ['scripts/render.mjs'], { cwd: ROOT });
+      await setEntryField(date, heading, { startHour, endHour });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ ok: true }));
     } catch (e) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ ok: false, error: String(e) }));
     }
+  }
+
+  // Time entries: live reads straight off the source markdown, scoped to exactly what's
+  // asked for (see dashboard/scripts/entries-store.mjs) — no snapshot file and nothing to
+  // invalidate, so a write above is visible to the very next call here.
+  if (path === '/api/entries/range' && req.method === 'GET') {
+    const from = url.searchParams.get('from');
+    const to = url.searchParams.get('to');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to || '')) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, error: 'from/to must be YYYY-MM-DD' }));
+    }
+    const days = await getRange(from, to);
+    const generated_at = days.map((d) => d.updated_at).filter(Boolean).sort().pop() || null;
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify({ generated_at, status: 'ok', data: { days } }));
+  }
+  if (path === '/api/entries/day' && req.method === 'GET') {
+    const date = url.searchParams.get('date');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, error: 'date must be YYYY-MM-DD' }));
+    }
+    const day = await getDay(date);
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify({ generated_at: day?.updated_at || null, status: day ? 'ok' : 'missing', data: day }));
+  }
+  // Cheap: filenames only, no file content read — the earliest/latest date on record, for
+  // week-nav boundaries and "most recent day with data" defaults without loading a wide range.
+  if (path === '/api/entries/bounds' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify(await getBounds()));
   }
 
   // Todos: direct structured edits to dashboard.todos_file (schema v2 — see
@@ -270,6 +248,9 @@ const server = createServer(async (req, res) => {
       item.state = state;
       item.done = state === 'done' ? (item.done || new Date().toISOString().slice(0, 10)) : null;
       await writeFile(file, stringifyTodosFile(data));
+      // Todos changed: recompute evidence (bounded scan, not the old every-render full pass)
+      // before re-rendering, so render.mjs's todos.json picks up the fresh sidecar.
+      await refreshTodoEvidence();
       execFileSync('node', ['scripts/render.mjs'], { cwd: ROOT });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ ok: true }));
@@ -308,6 +289,7 @@ const server = createServer(async (req, res) => {
         notes: [],
       });
       await writeFile(file, stringifyTodosFile(data));
+      await refreshTodoEvidence();
       execFileSync('node', ['scripts/render.mjs'], { cwd: ROOT });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ ok: true }));

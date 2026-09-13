@@ -66,6 +66,24 @@ def main():
             emit(f"update: {d.get('result', '')[:300]}")
             if d.get("is_error"):
                 emit(f"ERROR (subtype={d.get('subtype')})")
+            # Cumulative for the invocation so far, not incremental since the last result event —
+            # each line is a running total, so the last one before "refresh end" is the total for
+            # the whole -p call. usage field names match the Anthropic Messages API.
+            usage = d.get("usage") or {}
+            cost = d.get("total_cost_usd")
+            parts = []
+            if cost is not None:
+                parts.append(f"cost=${cost:.4f}")
+            for key, label in (
+                ("input_tokens", "in"),
+                ("output_tokens", "out"),
+                ("cache_creation_input_tokens", "cache_write"),
+                ("cache_read_input_tokens", "cache_read"),
+            ):
+                if key in usage:
+                    parts.append(f"{label}={usage[key]}")
+            if parts:
+                emit(f"tokens: {', '.join(parts)}")
 
         # Intentionally ignored: system/init, system/hook_*, rate_limit_event, user/tool_result
         # (redundant with the tool_use line and eventual subagent/result summaries).

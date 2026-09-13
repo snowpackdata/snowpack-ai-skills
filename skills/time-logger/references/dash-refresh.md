@@ -14,12 +14,24 @@ Paths are relative to the data home (`~/.local/share/time-logger/`, or
 ## How the store works
 
 - `dashboard/data/*.json` — one file per section, shape `{ generated_at, status, data }`.
-- `node app/dashboard/scripts/render.mjs` deterministically re-renders **time_entries, todos,
-  calendar, slack, summaries, digest, config** from their sources of truth (`time_logs/*.md`,
-  the `dashboard.todos_file` from `capabilities.yml`, `raw/calendar/`, `raw/slack/`,
-  `summaries/*.md` — the digest is the newest `*_daily-digest.md` — and `capabilities.yml`)
-  AND rebuilds `meta.json` (which the UI polls). It never touches `artifacts.json` or
-  `slack_conversations.json`.
+- `node app/dashboard/scripts/render.mjs` deterministically re-renders **todos, calendar,
+  slack, summaries, digest, config** from their sources of truth (the `dashboard.todos_file`
+  from `capabilities.yml`, `raw/calendar/`, `raw/slack/`, `summaries/*.md` — the digest is the
+  newest `*_daily-digest.md` — and `capabilities.yml`) AND rebuilds `meta.json` (which the UI
+  polls). It never touches `artifacts.json` or `slack_conversations.json`.
+- **Time entries have no section here.** The dashboard reads `time_logs/*.md` live, per
+  request, through `dashboard/server.mjs`'s `/api/entries/*` routes (day/range/bounds), which
+  call `dashboard/scripts/entries-store.mjs` — the single module that parses and writes these
+  files. There's no snapshot to keep in sync: a write (the dashboard's non-billable toggle,
+  time-range drag, or `scripts/entries-cli.mjs` for anything else) is visible on the very next
+  read with nothing to re-render. Never hand-edit a `### ` line directly or duplicate its
+  parsing elsewhere — go through `entries-store.mjs` (in-process) or `entries-cli.mjs` (CLI).
+- **Todo evidence** (which entries/PRs/Slack messages mention each open todo) is likewise not
+  computed by render.mjs — it's a separately-triggered, bounded scan in
+  `dashboard/scripts/refresh-todo-evidence.mjs`, written to `dashboard/data/todo_evidence.json`
+  and merged into `todos.json` by render.mjs's todos section. Run it whenever `todos.yaml`
+  changes (`scripts/update-todo.mjs` and the dashboard's own todo endpoints already do this
+  after every write) — a plain time-entry edit never triggers it.
 - `artifacts.json` (step 4) and `slack_conversations.json` (step 2b) are agent-written. After
   writing either, run the render script again so `meta.json` picks up the new timestamp.
 
@@ -113,6 +125,12 @@ Paths are relative to the data home (`~/.local/share/time-logger/`, or
    `action: "list"`, `limit: 50`, and write `dashboard/data/artifacts.json`:
    `{ generated_at, status: "ok", data: { artifacts: [{ title, url, updated }] } }`.
    Skip if the Artifact tool isn't available in this session.
+
+4b. **Todo evidence** (section `todos` or `all`): run
+   `node app/dashboard/scripts/refresh-todo-evidence.mjs` — recomputes which entries/PRs/Slack
+   messages mention each open todo (bounded to the last 90 days, not the whole year) and writes
+   `dashboard/data/todo_evidence.json`. Run this before step 5 so render.mjs's todos section
+   picks up a fresh sidecar. Cheap enough to run on every `refresh`/`refresh all`.
 
 5. **Render**: `node app/dashboard/scripts/render.mjs`.
 

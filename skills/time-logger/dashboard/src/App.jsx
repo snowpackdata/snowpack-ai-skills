@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-const SECTIONS = ['config', 'digest', 'time_entries', 'todos', 'calendar', 'slack', 'slack_conversations', 'artifacts', 'github_prs', 'summaries'];
+// Time entries are read live (see useEntries below), not part of the static snapshot store.
+const SECTIONS = ['config', 'digest', 'todos', 'calendar', 'slack', 'slack_conversations', 'artifacts', 'github_prs', 'summaries'];
 // Client-specific values come from data/config.json (rendered from capabilities.yml by
 // render.mjs) — nothing is hardcoded in the built app. Updated in useStore when it loads.
 let CONFIG = { jira_browse_url: '', client_name: '', org: '', orgs: {}, clients: {} };
@@ -214,6 +215,74 @@ function useReviewedEntries() {
     await refresh();
   }, [refresh]);
   return { reviewedEntries, toggle };
+}
+
+// Time entries: live, on-demand reads via dashboard/server.mjs's /api/entries/* routes (see
+// dashboard/scripts/entries-store.mjs) — no static snapshot to poll, so a write is visible on
+// the very next fetch with nothing to invalidate. `bounds` is a cheap filenames-only read (the
+// earliest/latest date on record) used for week-nav boundaries and the initial default day,
+// independent of whichever range happens to be loaded. `fetchRange` loads only the days asked
+// for — callers scope it to the visible window, not the whole year.
+function useEntries() {
+  const [days, setDays] = useState([]);
+  const [status, setStatus] = useState({ status: 'missing', generated_at: null });
+  const [bounds, setBounds] = useState({ earliest: null, latest: null });
+  const currentRangeRef = useRef(null);
+
+  const fetchBounds = useCallback(async () => {
+    try {
+      const r = await fetch('/api/entries/bounds');
+      if (r.ok) setBounds(await r.json());
+    } catch { /* retried on next call */ }
+  }, []);
+
+  const fetchRange = useCallback(async (from, to) => {
+    currentRangeRef.current = { from, to };
+    try {
+      const r = await fetch(`/api/entries/range?from=${from}&to=${to}`);
+      if (!r.ok) throw new Error(r.status);
+      const json = await r.json();
+      setDays(json.data?.days || []);
+      setStatus({ status: json.status, generated_at: json.generated_at });
+    } catch {
+      setStatus({ status: 'missing', generated_at: null });
+    }
+  }, []);
+
+  // Re-fetch whatever range is currently loaded — call this right after a write (non-billable
+  // toggle, time-range drag) instead of waiting on a poll timer to notice the file changed.
+  const refetch = useCallback(() => {
+    const r = currentRangeRef.current;
+    if (r) fetchRange(r.from, r.to);
+  }, [fetchRange]);
+
+  useEffect(() => { fetchBounds(); }, [fetchBounds]);
+
+  return { days, status, bounds, fetchRange, fetchBounds, refetch };
+}
+
+// Overview's "Last logged" tile: the most recent day with any entries, and its hours header.
+// Two cheap live reads (bounds is filenames-only; the day fetch is one file) polled on the
+// same cadence as the rest of the store, instead of loading the whole time-entries range just
+// for one stat.
+function useLatestDay() {
+  const [latest, setLatest] = useState(null);
+  const load = useCallback(async () => {
+    try {
+      const b = await (await fetch('/api/entries/bounds')).json();
+      if (!b.latest) return;
+      const r = await fetch(`/api/entries/day?date=${b.latest}`);
+      if (!r.ok) return;
+      const json = await r.json();
+      setLatest(json.data);
+    } catch { /* retried on next tick */ }
+  }, []);
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 30000);
+    return () => clearInterval(id);
+  }, [load]);
+  return latest;
 }
 
 function useJobs() {
@@ -858,12 +927,13 @@ function rebuildHeading(heading, range) {
 // time-entries markdown file (via /api/entries/time-range, the same direct-write-then-rerender
 // pattern as the non-billable toggle) the moment you let go of the mouse, rather than queuing a
 // comment for the agent to apply later.
-function DayGrid({ day, pending, submit, remove, reviewedEntryKeys, toggleEntry, onSelectEntry, selectedLetter }) {
+function DayGrid({ day, pending, submit, remove, reviewedEntryKeys, toggleEntry, onSelectEntry, selectedLetter, onChanged }) {
   const items = day.entries.filter((e) => e.range);
   // letter -> { heading, range }: entries this component has already saved locally, ahead of
-  // the ~5s poll that will confirm it server-side. Keyed by letter (stable across a pure time
-  // edit, since letters are assigned by position in the file and this feature never reorders
-  // blocks) rather than heading, because heading itself is what a drag changes.
+  // the live re-fetch (onChanged) that will confirm it server-side. Keyed by letter (stable
+  // across a pure time edit, since letters are assigned by position in the file and this
+  // feature never reorders blocks) rather than heading, because heading itself is what a drag
+  // changes.
   const [overrides, setOverrides] = useState({});
   const [preview, setPreview] = useState(null); // { letter, range } — live position while dragging
   const dragRef = useRef(null);
@@ -973,6 +1043,7 @@ function DayGrid({ day, pending, submit, remove, reviewedEntryKeys, toggleEntry,
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
       const newHeading = rebuildHeading(drag.heading, finalRange);
       setOverrides((prev) => ({ ...prev, [drag.letter]: { heading: newHeading, range: finalRange } }));
+      onChanged?.();
     } catch (err) {
       console.error('Error saving dragged/resized entry:', err);
     }
@@ -1028,6 +1099,7 @@ function DayGrid({ day, pending, submit, remove, reviewedEntryKeys, toggleEntry,
                   toggleReviewed={(val) => toggleEntry(day.date, e.heading, val)}
                   variant="card"
                   onDragHandleMouseDown={(ev) => beginDrag(e, 'move', ev)}
+                  onChanged={onChanged}
                 />
                 <div className="dg-resize-handle bottom" onMouseDown={(ev) => beginDrag(e, 'resize-bottom', ev)} />
               </div>
@@ -1078,22 +1150,24 @@ function CommentBox({ context, submit, onDone, placeholder }) {
 // the wrapper's time-proportional height is too short for the content. onDragHandleMouseDown,
 // card mode only: wired to the badge/time header specifically (not the whole card) so dragging
 // to move an entry doesn't fight with clicking a button, ticket link, or the notes text inside it.
-function Entry({ day, entry, pending, submit, remove, isReviewed, toggleReviewed, variant = 'list', onDragHandleMouseDown }) {
+function Entry({ day, entry, pending, submit, remove, isReviewed, toggleReviewed, variant = 'list', onDragHandleMouseDown, onChanged }) {
   const [open, setOpen] = useState(false);
   const [nbBusy, setNbBusy] = useState(false);
   const fb = pending.filter((p) => p.date === day.date && p.heading === entry.heading && !p.resolved);
   // Writes directly into the entry's heading line in the real time-entries file (not a JSON
   // sidecar like "reviewed") — this changes what the entry means, so it has to live in the
-  // source of truth to survive Notes API uploads and my_time's parser. The store re-renders
-  // server-side before this resolves, so the next 5s poll picks up the change.
+  // source of truth to survive Notes API uploads and my_time's parser. Reads are live (see
+  // useEntries), so the write itself is the only latency — call onChanged right after it
+  // succeeds to refresh immediately rather than waiting on any poll.
   const toggleNonBillable = async () => {
     setNbBusy(true);
     try {
-      await fetch('/api/entries/non-billable', {
+      const res = await fetch('/api/entries/non-billable', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date: day.date, heading: entry.heading, nonBillable: !entry.non_billable }),
       });
+      if (res.ok) onChanged?.();
     } finally { setNbBusy(false); }
   };
   const isCard = variant === 'card';
@@ -1242,14 +1316,15 @@ function FilterBar({ orgs, orgFilter, setOrgFilter, hideNonBillable, setHideNonB
 // Replaces the old vertical "Days" sidebar: always shows the selected week's 7 tiles (real data
 // or an empty placeholder), Previous/Today/Next to page between weeks, and a week-level
 // per-client hour total underneath.
-function WeekStrip({ section, days, weekStart, selectedDate, onSelectDate, onShiftWeek, onToday, pending, reviewedDates }) {
+function WeekStrip({ section, bounds, days, weekStart, selectedDate, onSelectDate, onShiftWeek, onToday, pending, reviewedDates }) {
   const unresolved = pending.filter((p) => !p.resolved && p.type === 'time_entry_comment');
   const countFor = (date) => unresolved.filter((p) => p.date === date).length;
   const byDate = new Map(days.map((d) => [d.date, d]));
   const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const weekDays = weekDates.map((date) => byDate.get(date)).filter(Boolean);
-  // days is most-recent-first (see render.mjs), so the last element is the oldest on record.
-  const earliestDate = days.length ? days[days.length - 1].date : null;
+  // Earliest date on record comes from the cheap /api/entries/bounds read, not from the
+  // (now range-scoped) loaded `days` — that array no longer necessarily reaches back that far.
+  const earliestDate = bounds?.earliest || null;
   const canGoBack = !earliestDate || addDays(weekStart, -7) >= startOfWeek(earliestDate);
   const weekTotals = mergeClientHours(weekDays);
 
@@ -1299,8 +1374,8 @@ function WeekStrip({ section, days, weekStart, selectedDate, onSelectDate, onShi
   );
 }
 
-function TimeEntriesPage({ section, pending, submit, remove }) {
-  const days = section?.data?.days || [];
+function TimeEntriesPage({ pending, submit, remove }) {
+  const { days, status: section, bounds, fetchRange, refetch } = useEntries();
 
   // undefined = the user hasn't touched the org filter yet, so default to CONFIG.org (client.org
   // in capabilities.yml — "the org this install logs time for", already exactly the concept
@@ -1320,8 +1395,11 @@ function TimeEntriesPage({ section, pending, submit, remove }) {
     () => (filtersActive ? days.map((d) => applyFiltersToDay(d, { org: orgFilter, hideNonBillable })) : days),
     [days, orgFilter, hideNonBillable]
   );
-  // Every org actually in use across all loaded days (not just the visible week), so the
-  // dropdown doesn't go empty just because this week happens not to include one.
+  // Every org in use across the currently loaded window (not just the visible week — see the
+  // fetchRange effect below for how wide that window is), so the dropdown doesn't go empty
+  // just because this week happens not to include one. Unlike the old all-history render, this
+  // is scoped to what's actually loaded, not the full year — a deliberate trade for not having
+  // to scan every day on every request.
   const orgOptions = useMemo(() => {
     const set = new Set();
     for (const d of days) {
@@ -1334,12 +1412,19 @@ function TimeEntriesPage({ section, pending, submit, remove }) {
   }, [days]);
 
   // null until the user actually navigates — until then, default to the most recent day with
-  // data (same default the old index-based sidebar had), not necessarily today.
+  // data (same default the old index-based sidebar had, from `bounds` rather than needing the
+  // whole year loaded), not necessarily today.
   const [selectedDateOverride, setSelectedDateOverride] = useState(null);
   const [weekStartOverride, setWeekStartOverride] = useState(null);
-  const selectedDate = selectedDateOverride ?? days[0]?.date ?? toISO(new Date());
+  const selectedDate = selectedDateOverride ?? bounds.latest ?? toISO(new Date());
   const weekStart = weekStartOverride ?? startOfWeek(selectedDate);
   const day = filteredDays.find((d) => d.date === selectedDate);
+
+  // Load a window around the visible week — enough either side that Previous/Next feels
+  // instant without paging on every single day — instead of the whole year on every request.
+  useEffect(() => {
+    fetchRange(addDays(weekStart, -21), addDays(weekStart, 27));
+  }, [weekStart, fetchRange]);
 
   const [selectedEntry, setSelectedEntry] = useState(null); // { entry } | null — always for `day`
 
@@ -1389,7 +1474,7 @@ function TimeEntriesPage({ section, pending, submit, remove }) {
   return (
     <div className="te-week-layout">
       <WeekStrip
-        section={section} days={filteredDays} weekStart={weekStart} selectedDate={selectedDate}
+        section={section} bounds={bounds} days={filteredDays} weekStart={weekStart} selectedDate={selectedDate}
         onSelectDate={selectDate} onShiftWeek={shiftWeek} onToday={goToday}
         pending={pending} reviewedDates={reviewedDates}
       />
@@ -1429,7 +1514,7 @@ function TimeEntriesPage({ section, pending, submit, remove }) {
                   <DayGrid
                     key={day.date} day={day} pending={pending} submit={submit} remove={remove}
                     reviewedEntryKeys={reviewedEntryKeys} toggleEntry={toggleEntry} onSelectEntry={onSelectEntry}
-                    selectedLetter={selectedEntry?.entry?.letter}
+                    selectedLetter={selectedEntry?.entry?.letter} onChanged={refetch}
                   />
                 </div>
               )}
@@ -1444,7 +1529,7 @@ function TimeEntriesPage({ section, pending, submit, remove }) {
                     return (
                       <Entry key={entryKey} day={day} entry={e} pending={pending} submit={submit} remove={remove}
                         isReviewed={reviewedEntryKeys.has(entryKey)}
-                        toggleReviewed={(val) => toggleEntry(day.date, e.heading, val)} />
+                        toggleReviewed={(val) => toggleEntry(day.date, e.heading, val)} onChanged={refetch} />
                     );
                   })}
                 </div>
@@ -1465,6 +1550,7 @@ function TimeEntriesPage({ section, pending, submit, remove }) {
               day={day} entry={selectedEntry.entry} pending={pending} submit={submit} remove={remove}
               isReviewed={reviewedEntryKeys.has(`${day.date}|${selectedEntry.entry.heading}`)}
               toggleReviewed={(val) => toggleEntry(day.date, selectedEntry.entry.heading, val)}
+              onChanged={refetch}
             />
           ) : (
             <p className="muted small">Click an entry on the grid to see its full detail here.</p>
@@ -1482,18 +1568,17 @@ export default function App() {
   const { jobs, trigger } = useJobs();
   const [tab, setTab] = useHashTab();
   const [logJob, setLogJob] = useState(null); // job name whose log modal is open, or null
+  const latestDay = useLatestDay();
 
   const tiles = useMemo(() => {
-    const days = store.time_entries?.data?.days || [];
-    const latest = days[0];
     const todoGroups = store.todos?.data?.groups || [];
     const openTodos = todoGroups.reduce((n, g) => n + g.items.filter((t) => !t.done).length, 0);
     const meetings = store.calendar?.data?.events?.length ?? 0;
     const unresolved = pending.filter((p) => !p.resolved).length;
     const unresolvedTime = pending.filter((p) => !p.resolved && p.type === 'time_entry_comment').length;
     const unresolvedPr = pending.filter((p) => !p.resolved && p.type === 'pr_comment').length;
-    return { latest, openTodos, meetings, unresolved, unresolvedTime, unresolvedPr };
-  }, [store, pending]);
+    return { latest: latestDay, openTodos, meetings, unresolved, unresolvedTime, unresolvedPr };
+  }, [store, pending, latestDay]);
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
@@ -1604,7 +1689,7 @@ export default function App() {
           )}
 
           {tab === 'time' && (
-            <TimeEntriesPage section={store.time_entries} pending={pending} submit={submit} remove={remove} />
+            <TimeEntriesPage pending={pending} submit={submit} remove={remove} />
           )}
 
           {tab === 'todos' && (
