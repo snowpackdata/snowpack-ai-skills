@@ -45,6 +45,13 @@ const JOBS = {
 const jobRuns = {}; // name -> { running, started_at, exit_code, finished_at }
 const LOGS_DIR = join(DATA_HOME, 'dashboard', 'logs'); // one <name>.log per job, same key as JOBS
 
+// Per-day refresh: same shape as JOBS/jobRuns above, but keyed by date instead of a fixed name,
+// since any day on the Time Entries page can trigger one. refresh-day.sh has no schedule
+// guards — it's explicitly requested for exactly this one date, right now.
+const DAY_REFRESH_SCRIPT = join(ROOT, 'scripts', 'refresh-day.sh');
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const dayRefreshRuns = {}; // date -> { running, started_at, exit_code, finished_at }
+
 async function serveFile(res, path) {
   try {
     const body = await readFile(path);
@@ -130,6 +137,47 @@ const server = createServer(async (req, res) => {
     const tail = text.split('\n').slice(-n).join('\n');
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify({ name, text: tail, running: !!jobRuns[name]?.running, fetched_at: new Date().toISOString() }));
+  }
+
+  // Per-day refresh: POST /api/refresh-day/<date> spawns refresh-day.sh for that one date;
+  // GET polls its status; GET .../log tails its log. Same pattern as /api/run and /api/logs
+  // above, just keyed by date instead of a fixed job name.
+  if (path.startsWith('/api/refresh-day/')) {
+    const rest = path.slice('/api/refresh-day/'.length);
+    const [date, sub] = rest.split('/');
+    if (!DATE_RE.test(date || '')) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, error: `invalid date: ${date}` }));
+    }
+    if (sub === 'log' && req.method === 'GET') {
+      const n = Math.min(Math.max(Number(url.searchParams.get('lines')) || 200, 1), 1000);
+      let text = '';
+      try { text = await readFile(join(LOGS_DIR, `refresh-day-${date}.log`), 'utf8'); }
+      catch { /* no log written yet */ }
+      const tail = text.split('\n').slice(-n).join('\n');
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify({ name: `refresh-day-${date}`, text: tail, running: !!dayRefreshRuns[date]?.running, fetched_at: new Date().toISOString() }));
+    }
+    if (!sub && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify(dayRefreshRuns[date] || { running: false }));
+    }
+    if (!sub && req.method === 'POST') {
+      if (dayRefreshRuns[date]?.running) {
+        res.writeHead(409, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ ok: false, error: 'already running' }));
+      }
+      dayRefreshRuns[date] = { running: true, started_at: new Date().toISOString() };
+      const child = spawn('/bin/zsh', [DAY_REFRESH_SCRIPT, date], { stdio: 'ignore' });
+      child.on('exit', (code) => {
+        dayRefreshRuns[date] = { ...dayRefreshRuns[date], running: false, exit_code: code, finished_at: new Date().toISOString() };
+      });
+      child.on('error', () => {
+        dayRefreshRuns[date] = { ...dayRefreshRuns[date], running: false, exit_code: -1, finished_at: new Date().toISOString() };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: true, date }));
+    }
   }
 
   // Reviewed entries: individual time entries the user has signed off on (by date + heading).

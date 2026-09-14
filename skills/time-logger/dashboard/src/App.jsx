@@ -307,16 +307,42 @@ function useJobs() {
   return { jobs, trigger };
 }
 
+// Same shape as useJobs above, but keyed by date instead of a fixed job name — any day on the
+// Time Entries page can trigger its own refresh-day.sh run independently of the others.
+function useDayRefresh() {
+  const [runs, setRuns] = useState({}); // date -> { running, started_at, exit_code, finished_at }
+  const poll = useCallback(async (date) => {
+    try {
+      const r = await fetch(`/api/refresh-day/${date}`);
+      if (!r.ok) return;
+      const json = await r.json();
+      setRuns((prev) => ({ ...prev, [date]: { date, ...json } }));
+    } catch { /* ignore */ }
+  }, []);
+  useEffect(() => {
+    const running = Object.values(runs).filter((r) => r?.running);
+    if (running.length === 0) return;
+    const id = setInterval(() => running.forEach((r) => poll(r.date)), 4000);
+    return () => clearInterval(id);
+  }, [runs, poll]);
+  const trigger = useCallback(async (date) => {
+    await fetch(`/api/refresh-day/${date}`, { method: 'POST' });
+    await poll(date);
+  }, [poll]);
+  return { runs, trigger, poll };
+}
+
 // A manual snapshot of a job's log, not a live stream — open it, optionally hit Refresh to
-// pull the latest tail while the job is still running, close it, done.
-function LogModal({ name, onClose }) {
+// pull the latest tail while the job is still running, close it, done. `path` overrides the
+// default /api/logs/<name> endpoint (used for per-day logs, which live at a different route).
+function LogModal({ name, path, onClose }) {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
   const [fetchedAt, setFetchedAt] = useState(null);
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`/api/logs/${name}?lines=300`);
+      const r = await fetch(`${path || `/api/logs/${name}`}?lines=300`);
       const json = await r.json();
       setText(json.text || '(no log written yet)');
       setFetchedAt(json.fetched_at);
@@ -325,7 +351,7 @@ function LogModal({ name, onClose }) {
     } finally {
       setLoading(false);
     }
-  }, [name]);
+  }, [name, path]);
   useEffect(() => { load(); }, [load]);
   const onKeyDown = (e) => { if (e.key === 'Escape') onClose(); };
   return (
@@ -1316,7 +1342,7 @@ function FilterBar({ orgs, orgFilter, setOrgFilter, hideNonBillable, setHideNonB
 // Replaces the old vertical "Days" sidebar: always shows the selected week's 7 tiles (real data
 // or an empty placeholder), Previous/Today/Next to page between weeks, and a week-level
 // per-client hour total underneath.
-function WeekStrip({ section, bounds, days, weekStart, selectedDate, onSelectDate, onShiftWeek, onToday, pending, reviewedDates }) {
+function WeekStrip({ section, bounds, days, weekStart, selectedDate, onSelectDate, onShiftWeek, onToday, pending, reviewedDates, refreshingDates }) {
   const unresolved = pending.filter((p) => !p.resolved && p.type === 'time_entry_comment');
   const countFor = (date) => unresolved.filter((p) => p.date === date).length;
   const byDate = new Map(days.map((d) => [d.date, d]));
@@ -1352,6 +1378,7 @@ function WeekStrip({ section, bounds, days, weekStart, selectedDate, onSelectDat
               <span className="week-tile-name">{fmtDay(date)}</span>
               {d ? <DayHours day={d} /> : <span className="muted num">0h</span>}
               <span className="week-tile-flags">
+                {refreshingDates.has(date) && <span className="refresh-chip" title="Refreshing…"><Icon name="refresh" className="ico spin" /></span>}
                 {reviewedDates.has(date) && <span className="rev-chip" title="Reviewed"><Icon name="check" /></span>}
                 {countFor(date) > 0 && <span className="fb-count"><Icon name="comment" />{countFor(date)}</span>}
               </span>
@@ -1376,6 +1403,17 @@ function WeekStrip({ section, bounds, days, weekStart, selectedDate, onSelectDat
 
 function TimeEntriesPage({ pending, submit, remove }) {
   const { days, status: section, bounds, fetchRange, refetch } = useEntries();
+  const { runs: dayRuns, trigger: triggerDayRefresh, poll: pollDayRefresh } = useDayRefresh();
+  const [logDate, setLogDate] = useState(null); // date whose refresh-day log modal is open, or null
+  // Reload this day's entries the moment its refresh-day run finishes, instead of waiting for
+  // the next poll — same instinct as useEntries' own refetch-after-write.
+  const prevDayRunning = useRef({});
+  useEffect(() => {
+    for (const [date, run] of Object.entries(dayRuns)) {
+      if (prevDayRunning.current[date] && !run.running) refetch();
+      prevDayRunning.current[date] = run.running;
+    }
+  }, [dayRuns, refetch]);
 
   // undefined = the user hasn't touched the org filter yet, so default to CONFIG.org (client.org
   // in capabilities.yml — "the org this install logs time for", already exactly the concept
@@ -1419,6 +1457,12 @@ function TimeEntriesPage({ pending, submit, remove }) {
   const selectedDate = selectedDateOverride ?? bounds.latest ?? toISO(new Date());
   const weekStart = weekStartOverride ?? startOfWeek(selectedDate);
   const day = filteredDays.find((d) => d.date === selectedDate);
+
+  // A page reload starts dayRuns empty (it's plain client state, nothing persisted) — without
+  // this, a refresh-day run still genuinely in progress server-side would look idle/clickable
+  // again the moment the page reloads. Sync with the server's real status for whichever day is
+  // actually on screen, same instinct as useJobs' mount-time refresh() for the sidebar jobs.
+  useEffect(() => { pollDayRefresh(selectedDate); }, [selectedDate, pollDayRefresh]);
 
   // Load a window around the visible week — enough either side that Previous/Next feels
   // instant without paging on every single day — instead of the whole year on every request.
@@ -1470,13 +1514,14 @@ function TimeEntriesPage({ pending, submit, remove }) {
   // "Hide non-billable" and it happened to be non-billable) — rather than clearing it, just stop
   // treating it as visible; toggling the filter back off naturally restores it with no extra state.
   const selectedVisible = !!(selectedEntry && day && day.entries.some((e) => e.letter === selectedEntry.entry.letter));
+  const refreshingDates = new Set(Object.values(dayRuns).filter((r) => r?.running).map((r) => r.date));
 
   return (
     <div className="te-week-layout">
       <WeekStrip
         section={section} bounds={bounds} days={filteredDays} weekStart={weekStart} selectedDate={selectedDate}
         onSelectDate={selectDate} onShiftWeek={shiftWeek} onToday={goToday}
-        pending={pending} reviewedDates={reviewedDates}
+        pending={pending} reviewedDates={reviewedDates} refreshingDates={refreshingDates}
       />
       <FilterBar
         orgs={orgOptions} orgFilter={orgFilter} setOrgFilter={setOrgFilterOverride}
@@ -1484,7 +1529,26 @@ function TimeEntriesPage({ pending, submit, remove }) {
       />
       <div className="te-body">
         <div className="te-main">
-          {!day ? <div className="panel"><p className="muted">No time entries rendered yet.</p></div> : (
+          {!day ? (
+            <div className="panel day-meta">
+              <div className="panel-head">
+                <p className="muted">No time entries rendered yet.</p>
+                <span className="spacer" />
+                <button
+                  className="rev-btn"
+                  onClick={() => triggerDayRefresh(selectedDate)} disabled={dayRuns[selectedDate]?.running}
+                  title="Fetch this day's sources and draft it (same flow as the sidebar Refresh, scoped to just this day)">
+                  <Icon name="refresh" />{dayRuns[selectedDate]?.running ? 'Refreshing…' : 'Refresh day'}
+                </button>
+                {dayRuns[selectedDate] && !dayRuns[selectedDate].running && (
+                  <button className="log-btn" onClick={() => setLogDate(selectedDate)} title="View this day's refresh log"><Icon name="doc" /></button>
+                )}
+              </div>
+              {dayRuns[selectedDate]?.finished_at && !dayRuns[selectedDate]?.running && (
+                <p className="small dim">refreshed {ageLabel(dayRuns[selectedDate].finished_at)}</p>
+              )}
+            </div>
+          ) : (
             <>
               <div className="panel day-meta">
                 <div className="panel-head">
@@ -1495,7 +1559,19 @@ function TimeEntriesPage({ pending, submit, remove }) {
                     title={reviewedDates.has(day.date) ? 'Unmark reviewed' : 'Mark this day as reviewed'}>
                     {reviewedDates.has(day.date) ? <><Icon name="check" />Reviewed</> : 'Mark reviewed'}
                   </button>
+                  <button
+                    className="rev-btn"
+                    onClick={() => triggerDayRefresh(day.date)} disabled={dayRuns[day.date]?.running}
+                    title="Refetch this day's sources and redraft it (same flow as the sidebar Refresh, scoped to just this day)">
+                    <Icon name="refresh" />{dayRuns[day.date]?.running ? 'Refreshing…' : 'Refresh day'}
+                  </button>
+                  {dayRuns[day.date] && !dayRuns[day.date].running && (
+                    <button className="log-btn" onClick={() => setLogDate(day.date)} title="View this day's refresh log"><Icon name="doc" /></button>
+                  )}
                   <span className="spacer" />
+                  {dayRuns[day.date]?.finished_at && !dayRuns[day.date]?.running && (
+                    <span className="small dim" title={new Date(dayRuns[day.date].finished_at).toLocaleString()}>refreshed {ageLabel(dayRuns[day.date].finished_at)} ·</span>
+                  )}
                   {day.updated_at && <span className="small dim" title={new Date(day.updated_at).toLocaleString()}>drafted {ageLabel(day.updated_at)} ·</span>}
                   <span className="small dim num" title="Sum of entry durations (billable); entries may overlap">{day.hours}</span>
                   {day.span && <span className="small muted num" title="First start to last end">· {day.span}</span>}
@@ -1557,6 +1633,7 @@ function TimeEntriesPage({ pending, submit, remove }) {
           )}
         </div>
       </div>
+      {logDate && <LogModal name={`refresh-day-${logDate}`} path={`/api/refresh-day/${logDate}/log`} onClose={() => setLogDate(null)} />}
     </div>
   );
 }
