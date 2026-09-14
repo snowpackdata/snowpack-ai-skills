@@ -11,49 +11,28 @@ drop the `_<slug>` suffix everywhere.
 
 ## Build
 
-Write `raw/combined/time-log_YYYY-MM-DD_<slug>.md`:
+Run the deterministic builder instead of writing the file by hand — every piece of it is
+either "copy this file's bytes verbatim" or "strip a fixed prefix off an existing heading
+line," which cost real minutes of pure output-token generation for zero judgment when this
+used to be hand-assembled on every refresh, even an idempotent no-op one:
 
-```
-# time-log_YYYY-MM-DD_<slug>
-
-## Slack
-
-[full contents of raw/slack/YYYY-MM-DD.md, or "(no data)" if missing]
-
-## Calendar
-
-[full contents of raw/calendar/YYYY-MM-DD.md, or "(no data)" if missing]
-
-## Claude Sessions
-
-[full contents of raw/claude/YYYY-MM-DD.md, or "(no data)" if missing]
-
-## GitHub
-
-[full contents of raw/github/YYYY-MM-DD.md, or "(no data)" if missing]
-
-## Granola Meeting Notes
-
-[full contents of raw/granola/YYYY-MM-DD.md, or "(no data)" if missing]
-
-## Recommended Time Log Structure
-
-- 7:30 – 9:00 AM  Task name — one-line description  (1.5h)  [client: Snowpack]
-- 9:30 – 10:00 AM  Data Standup [meeting]  (0.5h)  [client: Snowpack]
-- 5:00 – 6:00 PM  Hotlap telemetry pipeline  (1h)  [client: Personal]
-...
-Total: Xh (Snowpack 6.5h · Personal 1h)
+```bash
+python3 <data home>/scripts/build_combined_file.py YYYY-MM-DD
 ```
 
-Include a `##` section for every source directory that has a file for the date (Title Case of
-any unrecognized directory name); omit sections for sources that don't exist. The Recommended
-Time Log Structure is derived from `time_logs/time_entries_YYYYMMDD.md` — one short line per
-`###` block with its times, title, and duration, ending with `Total:`. If the entries file
-doesn't exist yet, omit that section (a later `refresh entries` run adds it).
+It writes `raw/combined/time-log_YYYY-MM-DD_<slug>.md`: one `##` section per fixed source
+(Slack, Calendar, Claude Sessions, GitHub, Granola Meeting Notes — always all five, `client.slug`
+read straight from `capabilities.yml`), each holding that source's raw file verbatim or
+`(no data)` if it doesn't exist yet, followed by `## Recommended Time Log Structure` — one `- `
+bullet per `###` heading in `time_logs/time_entries_YYYYMMDD.md` (copied as-is, not
+re-derived) plus a `Total:` line built from that file's own `**Hours**`/`**Clients**` fields.
+A day with an entries file but zero entries gets a `(no entries — zero-hours day, no activity
+found in any source)` line instead of bullets. If the entries file doesn't exist yet at all,
+the whole Recommended Time Log Structure section is omitted (a later `refresh entries` run
+adds it) — every other section is always present.
 
-Rebuilding is idempotent: rerunning for a date overwrites the file. When rebuilding after a
-refetch and the entries file hasn't changed, carry the existing Recommended Time Log Structure
-section over unchanged.
+Rebuilding is idempotent by construction (the script always regenerates from current source
+state, never diffs against the previous combined file) — rerunning for a date overwrites it.
 
 The combined file stays on this machine. Sending a day's time anywhere is `submit`'s job,
 through the machine's submit instructions, never a side effect of `refresh entries`.
