@@ -15,7 +15,25 @@
 // with any [client: ...] tag kept and any [non-billable] tag stripped — same string the
 // dashboard already uses to address an entry). Prints the resulting JSON on success; exits 1
 // with an error message on failure.
-import { getDay, getRange, getBounds, setEntryField } from '../dashboard/scripts/entries-store.mjs';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Distributed two different ways — as-is in the skill repo (a sibling of dashboard/) and
+// copied standalone into <data home>/scripts/ by bootstrap.sh (a sibling of app/dashboard/,
+// not dashboard/) — so a single static relative import can't reach entries-store.mjs in both.
+// Same fix as update-todo.mjs's.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ENTRIES_STORE_CANDIDATES = [
+  join(HERE, '../dashboard/scripts/entries-store.mjs'),     // repo layout
+  join(HERE, '../app/dashboard/scripts/entries-store.mjs'), // <data home>/scripts layout
+];
+const entriesStorePath = ENTRIES_STORE_CANDIDATES.find(existsSync);
+if (!entriesStorePath) {
+  console.error('entries-store.mjs not found in either expected layout');
+  process.exit(1);
+}
+const { getDay, getRange, getBounds, setEntryField } = await import(entriesStorePath);
 
 const USAGE = `usage:
   entries-cli.mjs get-day <date>

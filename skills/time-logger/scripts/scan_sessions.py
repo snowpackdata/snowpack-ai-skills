@@ -7,6 +7,7 @@ Usage: python3 scan_sessions.py YYYY-MM-DD
 Output: structured text per session — stats + message excerpts for summarization.
 """
 
+import difflib
 import json
 import os
 import re
@@ -37,6 +38,16 @@ _BOILERPLATE_PREFIXES = ("<local-command-stdout>", "<local-command-caveat>") + _
 # still real human-initiated activity, just not excerpt-worthy content.
 _AUTOMATED_PREFIXES = _TASK_NOTIFICATION_PREFIXES
 
+# The fan-out recipe (fetch-claude-sessions-fanout.md) dispatches one summarize-claude-session
+# subagent per fresh file; each dispatch is itself a new Claude Code session transcript, which
+# the *next* scan would otherwise pick up as a brand-new "session" needing its own summary —
+# pure recursive noise (the automation_project_dir() filter doesn't catch these because they
+# run from whatever cwd dispatched them, not a dedicated automation directory). The recipe is
+# required to start every such dispatch prompt with this literal tag as its first characters,
+# so a whole file can be identified and skipped from a single line, cheaply, the same way
+# automation-directory transcripts are skipped before any excerpt costs a token.
+_FANOUT_WORKER_PREFIX = "<time-logger-fanout-worker>"
+
 
 def _sentence_truncate(text: str, limit: int = 400, min_length: int = 200) -> str:
     """Cut at the last sentence boundary before `limit` instead of a blind character cut, so a
@@ -52,6 +63,30 @@ def _sentence_truncate(text: str, limit: int = 400, min_length: int = 200) -> st
         if m.end() >= min_length:
             best = m.end()
     return text[:best].rstrip() if best > 0 else window
+
+
+# How many of the most recently kept excerpts to compare a new one against when deduping —
+# a near-duplicate (the same content posted twice, e.g. a review re-posted after a small
+# revision) is usually close by but not always strictly adjacent, so a small trailing window
+# catches more than checking only the immediately preceding excerpt while staying O(n) overall.
+_DEDUPE_LOOKBACK = 4
+_DEDUPE_SIMILARITY = 0.75
+
+
+def _dedupe_excerpts(excerpts: list) -> list:
+    """Drop an excerpt that's a near-duplicate of one already kept recently. Real sessions do
+    this: the same review write-up posted twice after a minor revision, a status check
+    reworded but repeating the same finding. That costs the eventual summarizer tokens to read
+    twice for zero new information. Deliberately narrow in scope — this only catches near-exact
+    text repeats, not a semantic "this is filler" judgment (a status-check sentence that also
+    states a real finding stays, since dropping it would lose that finding too)."""
+    kept = []
+    for e in excerpts:
+        if any(difflib.SequenceMatcher(None, e, prev).ratio() >= _DEDUPE_SIMILARITY
+               for prev in kept[-_DEDUPE_LOOKBACK:]):
+            continue
+        kept.append(e)
+    return kept
 
 
 def utc_dates_for_local_day(target_date: str) -> set:
@@ -99,6 +134,7 @@ def scan_file(filepath: str, target_date: str) -> Optional[dict]:
     first_ts = None
     last_ts = None
     excerpts = []
+    repo = None
     # Set right after an automated-notification turn, consumed by the very next assistant turn
     # (its automatic acknowledgment) — see _AUTOMATED_PREFIXES. Together they're one non-work
     # event, not two turns.
@@ -111,6 +147,16 @@ def scan_file(filepath: str, target_date: str) -> Optional[dict]:
                     obj = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+
+                # Claude Code stamps the real, unencoded cwd on (almost) every line — read it
+                # opportunistically from whichever line has it first. This is the one reliable
+                # way to name the repo: the project-dir folder name only encodes the path with
+                # "/" and "." both replaced by "-", so a repo name that itself contains a dash
+                # (e.g. "billing-service") can't be recovered from the encoded name alone.
+                if repo is None:
+                    cwd = obj.get("cwd")
+                    if cwd:
+                        repo = Path(cwd).name
 
                 ts = obj.get("timestamp", "")
                 if not ts:
@@ -169,7 +215,8 @@ def scan_file(filepath: str, target_date: str) -> Optional[dict]:
         "turns": turns,
         "first_ts": first_ts,
         "last_ts": last_ts,
-        "excerpts": cap_excerpts(excerpts),
+        "repo": repo or Path(filepath).parent.name,
+        "excerpts": cap_excerpts(_dedupe_excerpts(excerpts)),
     }
 
 
@@ -212,17 +259,41 @@ def cap_excerpts(excerpts: list) -> list:
     return head + ["[... excerpts omitted: session exceeds the character budget ...]"] + tail
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: scan_sessions.py YYYY-MM-DD", file=sys.stderr)
-        sys.exit(1)
+def _is_fanout_worker_transcript(filepath: str) -> bool:
+    """Peek at just the first user-authored message — cheap, no need to read further — to tell
+    whether this whole file is a summarize-claude-session dispatch rather than real work. See
+    _FANOUT_WORKER_PREFIX for why this can't be a directory-based check like automation_dir."""
+    try:
+        with open(filepath) as f:
+            for line in f:
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if obj.get("type") != "user":
+                    continue
+                content = obj.get("message", {}).get("content", "")
+                text = ""
+                if isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text += block.get("text", "")
+                elif isinstance(content, str):
+                    text = content
+                return text.strip().startswith(_FANOUT_WORKER_PREFIX)
+    except OSError:
+        pass
+    return False
 
-    target_date = sys.argv[1]
 
+def collect_results(target_date: str) -> tuple[list, dict, int, int, int]:
+    """Deterministic discovery + extraction, shared by both output modes: every session with
+    activity on target_date, its excerpts, and whether it's still cache-valid. No LLM
+    involved — this is pure filesystem/JSON mechanics."""
     projects_dir = Path.home() / ".claude" / "projects"
     if not projects_dir.exists():
         print(f"No projects dir found at {projects_dir}", file=sys.stderr)
-        sys.exit(0)
+        return [], {}, 0, 0, 0
 
     day_start_ts = datetime.strptime(target_date, "%Y-%m-%d").replace(tzinfo=LOCAL_TZ).timestamp()
     automation_dir = automation_project_dir()
@@ -232,6 +303,7 @@ def main():
     results = []
     skipped_automation = 0
     skipped_stale = 0
+    skipped_fanout_worker = 0
 
     for fpath in jsonl_files:
         # time-logger running time-logger: every headless scheduled-refresh.sh / morning-run.sh
@@ -252,28 +324,39 @@ def main():
                 continue
         except OSError:
             continue
+        if _is_fanout_worker_transcript(str(fpath)):
+            skipped_fanout_worker += 1
+            continue
         result = scan_file(str(fpath), target_date)
         if result:
             results.append(result)
 
-    # Sort by first activity time
     results.sort(key=lambda r: r["first_ts"])
+    return results, cache, skipped_automation, skipped_stale, skipped_fanout_worker
 
-    fmt = "%I:%M %p"
+
+def _cache_status(r: dict, cache: dict) -> tuple[bool, str, Optional[dict]]:
+    cache_entry = cache.get(r["filepath"])
+    # Minute precision, not the raw isoformat() — the agent that writes the cache reads a
+    # `last=` field already rounded to the minute, so comparing at full second/microsecond
+    # precision would false-negative on every unchanged session, never hitting the cache.
+    last_iso = r["last_ts"].replace(second=0, microsecond=0).isoformat()
+    is_cached = bool(
+        cache_entry
+        and cache_entry.get("turns") == r["turns"]
+        and cache_entry.get("last_iso") == last_iso
+        and cache_entry.get("summary")
+    )
+    return is_cached, last_iso, cache_entry
+
+
+def run_stdout(target_date: str) -> None:
+    results, cache, skipped_automation, skipped_stale, skipped_fanout_worker = collect_results(target_date)
+    fmt = "%-I:%M %p %Z"
     cached_count = 0
     fresh_count = 0
     for r in results:
-        cache_entry = cache.get(r["filepath"])
-        # Minute precision, not the raw isoformat() — the agent that writes the cache reads a
-        # `last=` field already rounded to the minute, so comparing at full second/microsecond
-        # precision would false-negative on every unchanged session, never hitting the cache.
-        last_iso = r["last_ts"].replace(second=0, microsecond=0).isoformat()
-        is_cached = bool(
-            cache_entry
-            and cache_entry.get("turns") == r["turns"]
-            and cache_entry.get("last_iso") == last_iso
-            and cache_entry.get("summary")
-        )
+        is_cached, last_iso, cache_entry = _cache_status(r, cache)
 
         print(f"=== SESSION ===")
         print(f"file={r['filepath']}")
@@ -304,6 +387,65 @@ def main():
     print(f"FRESH_SESSIONS={fresh_count}")
     print(f"FILTERED_AUTOMATION={skipped_automation}")
     print(f"SKIPPED_STALE_MTIME={skipped_stale}")
+    print(f"FILTERED_FANOUT_WORKER={skipped_fanout_worker}")
+
+
+def run_split(target_date: str, out_dir: str) -> None:
+    """Discovery+extraction for the fan-out flow: write one excerpt file per fresh session plus
+    a manifest.json (metadata for every session, cached or not) — the manifest is small enough
+    for the orchestrator to read directly; per-session excerpt files are handed to a subagent
+    instead of loaded into the orchestrator's own context."""
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    results, cache, skipped_automation, skipped_stale, skipped_fanout_worker = collect_results(target_date)
+
+    fmt = "%-I:%M %p %Z"
+    manifest = []
+    for i, r in enumerate(results):
+        is_cached, last_iso, cache_entry = _cache_status(r, cache)
+        entry = {
+            "file": r["filepath"],
+            "repo": r["repo"],
+            "turns": r["turns"],
+            "first": r["first_ts"].strftime(fmt),
+            "last": r["last_ts"].strftime(fmt),
+            "last_iso": last_iso,
+            "cached": is_cached,
+        }
+        if is_cached:
+            entry["effort"] = cache_entry["effort"]
+            entry["summary"] = cache_entry["summary"]
+        else:
+            excerpt_path = out / f"session_{i:03d}.txt"
+            excerpt_path.write_text("\n---\n".join(r["excerpts"]))
+            entry["excerpt_file"] = str(excerpt_path)
+        manifest.append(entry)
+
+    manifest_path = out / "manifest.json"
+    manifest_path.write_text(json.dumps({
+        "target_date": target_date,
+        "sessions": manifest,
+        "total_sessions": len(results),
+        "cached_sessions": sum(1 for e in manifest if e["cached"]),
+        "fresh_sessions": sum(1 for e in manifest if not e["cached"]),
+        "filtered_automation": skipped_automation,
+        "skipped_stale_mtime": skipped_stale,
+        "filtered_fanout_worker": skipped_fanout_worker,
+    }, indent=2))
+    print(f"wrote {manifest_path}")
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: scan_sessions.py YYYY-MM-DD [--split <out_dir>]", file=sys.stderr)
+        sys.exit(1)
+
+    target_date = sys.argv[1]
+
+    if len(sys.argv) >= 4 and sys.argv[2] == "--split":
+        run_split(target_date, sys.argv[3])
+    else:
+        run_stdout(target_date)
 
 
 if __name__ == "__main__":

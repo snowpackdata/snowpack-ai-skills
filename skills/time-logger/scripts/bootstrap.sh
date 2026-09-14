@@ -46,6 +46,9 @@ fi
 if [ -n "$SKILL_DIR" ] && [ -d "$SKILL_DIR/.claude/agents" ]; then
   cp "$SKILL_DIR"/.claude/agents/*.md "$AGENTS_DIR/"
   cp "$SKILL_DIR/scripts/scan_sessions.py" "$DATA_HOME/scripts/scan_sessions.py"
+  cp "$SKILL_DIR/scripts/apply_session_blocks.py" "$DATA_HOME/scripts/apply_session_blocks.py"
+  cp "$SKILL_DIR/scripts/entries-cli.mjs" "$DATA_HOME/scripts/entries-cli.mjs"
+  cp "$SKILL_DIR/scripts/day_is_closed.py" "$DATA_HOME/scripts/day_is_closed.py"
   cp "$SKILL_DIR/scripts/check_week_continuity.py" "$DATA_HOME/scripts/check_week_continuity.py"
   cp "$SKILL_DIR/scripts/check_draft_freshness.py" "$DATA_HOME/scripts/check_draft_freshness.py"
   cp "$SKILL_DIR/scripts/snap_entry_times.py" "$DATA_HOME/scripts/snap_entry_times.py"

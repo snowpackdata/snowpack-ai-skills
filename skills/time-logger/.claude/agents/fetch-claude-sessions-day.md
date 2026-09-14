@@ -86,6 +86,13 @@ For each `=== SESSION ===` block from Step 1:
     - `medium` — 15–50 turns
     - `high` — 50+ turns (also bump to high if there were clear error/fix cycles regardless of count)
 
+**Compose every `cached=no` summary now, in this same reasoning pass, before touching any
+file-write tool in Step 3.** Don't interleave "summarize one session, write its block, summarize
+the next" — that turns what should be one continuous piece of reasoning into N separate
+tool-call round trips, each carrying its own turn-taking overhead on top of the actual writing
+time. Hold all of them (cached=yes and cached=no alike) in mind as one complete, ordered set;
+Step 3 then applies them in a single pass.
+
 Count `cached=yes` vs `cached=no` blocks for Step 4's report (or use the scanner's own
 `CACHED_SESSIONS=`/`FRESH_SESSIONS=` lines).
 
@@ -99,8 +106,9 @@ found in this run, keyed by its `file=` path: `{"turns": ..., "last_iso": ..., "
 cached summary text straight from this run's scanner output — never reconstruct or reformat
 `last_iso`, since a value that doesn't match the scanner's own minute-precision string
 byte-for-byte will silently miss the cache next time. For a `cached=no` block, write the
-`turns=`/`last_iso=` this run just read plus the fresh `effort`/summary you just wrote. Drop
-any entry for a file no longer present today (rare, but keeps the cache from growing stale).
+`turns=`/`last_iso=` this run just read plus the `effort`/summary you composed for it in
+Step 2. Drop any entry for a file no longer present today (rare, but keeps the cache from
+growing stale).
 
 ---
 
@@ -123,28 +131,46 @@ omitted summaries:
 ---
 ```
 
-**The file doesn't exist yet** (first run of the day): `Write` it fresh — the `# Claude Code
-Sessions — [Weekday], [Month Day], [Year]` header, then one block per session, ordered by
-first-activity ascending.
+Apply every change from Step 2 in **one pass** via `apply_session_blocks.py`, instead of one
+`Edit` tool call per session — an Edit per block is correct but each one is its own tool-call
+round trip on top of the actual write; a day with many sessions pays that overhead once per
+session for no reason, since every change is already known before you write anything. Only
+`cached=no` sessions ever need an operation — a `cached=yes` block is never touched, never
+re-typed, and costs nothing here.
 
-**The file already exists**: do NOT `Write` the whole file again — a full rewrite costs output
-tokens for every session's block whether or not it changed, which throws away everything the
-cache was supposed to save. `Read` the file once, then touch only what actually changed:
-- **`cached=yes` sessions** — leave their block exactly as it is. Do not `Edit` it, do not
-  re-type it anywhere, do not include it in your reasoning beyond confirming it's already
-  there.
-- **`cached=no` session whose `**File**:` path is already in the file** (it grew since the last
-  write) — `Edit` just that one block: match on its `**File**: <path>` line through the
-  following blank-line-then-`---`, replace with the freshly-summarized block. Never touch any
-  other block to make this replacement.
-- **`cached=no` session whose `**File**:` path is new to the file** (first time seen today) —
-  insert its block in chronological position: anchor an `Edit` on the immediately-preceding
-  session's trailing `---` (insert the new block right after it) when that's unambiguous;
-  if picking the right neighbor isn't straightforward, append the new block at the end of the
-  file instead rather than risk a bad edit — being slightly out of chronological order is
-  harmless, corrupting the file is not.
-- If a session block exists in the file from a prior run but no longer appears in this run's
-  scanner output at all (rare), leave it — never delete retroactively.
+Build one JSON operations file (a scratch temp path is fine) and run it in a single call:
+
+```bash
+python3 ~/.local/share/time-logger/scripts/apply_session_blocks.py \
+  ~/.local/share/time-logger/raw/claude/YYYY-MM-DD.md /tmp/claude-day-ops.json
+```
+
+Where the JSON is `{"header": "...", "operations": [...]}` (see the script's own usage comment
+for the exact shape):
+- **The file doesn't exist yet** (first run of the day): set `header` to
+  `# Claude Code Sessions — [Weekday], [Month Day], [Year]`, and give one `append` operation
+  per session, in first-activity-ascending order — the script creates the file from `header`
+  when the target path doesn't exist.
+- **The file already exists**:
+  - **`cached=no` session whose `**File**:` path is already in the file** (it grew since the
+    last write) — one `replace` operation, `anchor_file` set to that path, `block` the freshly
+    composed block.
+  - **`cached=no` session whose `**File**:` path is new to the file** (first time seen today) —
+    one `insert_after` operation anchored on the immediately-preceding session's `**File**:`
+    path when that's unambiguous, so the new block lands in chronological order; if picking the
+    right neighbor isn't straightforward, use `append` instead rather than risk anchoring on the
+    wrong block — being slightly out of chronological order is harmless, corrupting the file is
+    not.
+  - **`cached=yes` sessions** — no operation at all; they're already correct in the file as-is.
+  - If a session block exists in the file from a prior run but no longer appears in this run's
+    scanner output at all (rare), leave it — no operation for it either; never delete
+    retroactively.
+
+Every `block` you write must be in the exact format above, including the trailing `---`. If
+the script reports an error (an `anchor_file` it couldn't find — check for a typo against
+Step 1's `file=` lines first), fix the operations file and re-run it rather than falling back
+to manual `Edit` calls for everything; a genuinely stuck single operation can still be applied
+by hand as a last resort, but don't abandon the batch approach over one bad anchor.
 
 ---
 

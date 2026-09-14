@@ -41,16 +41,36 @@ Paths are relative to the data home (`~/.local/share/time-logger/`, or
    optional date `$2`):
 
    - **Resolve the date** — `$2` if given (per the skill's usual date resolution), else today.
-   - **Fetch.** If the date is **today**, spawn the fetch agents for every enabled source in
-     parallel *now* — not only when the raw file is missing; today keeps evolving, so always
-     ask. This is cheap even run after run because the agents cache internally: the
-     Claude-sessions agent rescans (fast I/O) but reuses a session's cached summary when its
-     turn count and last-activity time haven't moved, and the Slack agent diffs against
-     already-captured message ids and only formats what's new — so an "everything's already up
-     to date" refresh returns almost immediately instead of redoing the same summarization
-     work. If the date is **in the past**, only fetch sources with no existing
-     `raw/{source}/YYYY-MM-DD.md` — a closed day's raw data doesn't need re-pulling (to force a
-     redo, delete that file first).
+   - **Fetch.** If the date is **today**, fetch every enabled source *now* — not only when the
+     raw file is missing; today keeps evolving, so always ask. Spawn `fetch-slack-day`,
+     `fetch-calendar-day`, `fetch-github-day`, `fetch-granola-day` for their respective enabled
+     sources in parallel; for **claude**, follow
+     [`fetch-claude-sessions-fanout.md`](./fetch-claude-sessions-fanout.md) instead of spawning
+     an agent (it does its own internal parallel fan-out, one subagent per fresh session — run
+     it alongside the other sources' spawns, not blocking on them). This is cheap even run
+     after run because each source caches internally: the claude fan-out's scan rescans (fast
+     I/O) but reuses a session's cached summary when its turn count and last-activity time
+     haven't moved, and the Slack agent diffs against already-captured message ids and only
+     formats what's new — so an "everything's already up to date" refresh returns almost
+     immediately instead of redoing the same summarization work. If the date is **in the
+     past**, the naive rule — "skip any source whose raw file
+     already exists" — silently misses real activity whenever that file was written *during*
+     the target day rather than after it ended: a Claude session kept accumulating turns for
+     hours after that day's only fetch happened to run (this actually occurred — a Saturday
+     with no scheduled cron, fetched once mid-evening, missing everything after), and the same
+     gap can happen to any source fetched same-day. For **claude** specifically, don't rely on
+     existence alone:
+     ```bash
+     python3 <data home>/scripts/day_is_closed.py <date> <data home>/raw/claude/<date>.md
+     ```
+     `missing` or `stale` → run the claude fan-out anyway (cheap even when nothing new turns up
+     — the scanner's own mtime-prefilter and per-session cache mean a genuinely finished day
+     comes back as all-cache-hits almost immediately). `closed` → skip, matching the old
+     behavior. For the other sources (**calendar**, **slack**, **github**, **granola**),
+     keep the simpler "skip if the raw file exists" rule for now — the same class of gap can in
+     principle affect them too (a commit landing, a message posting, after that day's fetch
+     already ran), but re-fetching them isn't confirmed as cheap the way the Claude scanner is;
+     to force a redo for any source, delete its raw file first.
    - **Draft.** For `entries` or `all`, first check whether a draft is even needed:
      ```bash
      python3 <data home>/scripts/check_draft_freshness.py check <date>
