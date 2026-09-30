@@ -1,7 +1,7 @@
 ---
 name: todo
-description: Slash-command todo list. Run /todo to list open items, /todo <text> to add one, /todo done <id> to complete one, /todo setup to configure project mappings and backends, /todo migrate to convert an old v1 (markdown) file, /todo status to see what's configured. Stores todos in one YAML file and routes each new one to a backend (a local record, or a connected system like GitHub Issues or Jira) based on which project/repo it belongs to, then merges everything back together when listing — a hybrid local + ticket-system todo list.
-summary: "/todo | /todo <text> | /todo done <id> | /todo setup — hybrid local + GitHub Issues/Jira todo list, routed by project."
+description: Slash-command todo list. Run /todo to list open items, /todo {text} to add one, /todo done {id} to complete one, /todo setup to configure project mappings and backends, /todo migrate to convert an old v1 (markdown) file, /todo status to see what's configured. Stores todos in one YAML file and routes each new one to a backend (a local record, or a connected system like GitHub Issues or Jira) based on which project/repo it belongs to, then merges everything back together when listing — a hybrid local + ticket-system todo list.
+summary: "/todo | /todo {text} | /todo done {id} | /todo setup — hybrid local + GitHub Issues/Jira todo list, routed by project."
 owner: "@jarellano01"
 status: development
 notes: "v2: YAML store, no dual-format support — see CHANGELOG.md. GitHub Issues and Jira backends ship; Linear can be added later as a new file in todo-instructions.examples/."
