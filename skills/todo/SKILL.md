@@ -56,7 +56,7 @@ below and `CHANGELOG.md`.
 
 ## Bootstrap (runs automatically on every invocation)
 
-!`for c in "$HOME/.claude/skills/todo" ".claude/skills/todo" "skills/todo" "."; do if [ -f "$c/scripts/bootstrap.sh" ] && grep -q '^name: todo$' "$c/SKILL.md" 2>/dev/null; then bash "$c/scripts/bootstrap.sh" "$(cd "$c" && pwd -P)"; exit 0; fi; done; echo "skill_dir: NOT FOUND — see Troubleshooting"`
+!`for c in "${CLAUDE_PLUGIN_ROOT}" "$HOME/.claude/skills/todo" ".claude/skills/todo" "skills/todo" "."; do if [ -f "$c/scripts/bootstrap.sh" ] && grep -q '^name: todo$' "$c/SKILL.md" 2>/dev/null; then bash "$c/scripts/bootstrap.sh" "$(cd "$c" && pwd -P)"; exit 0; fi; done; echo "skill_dir: NOT FOUND — see Troubleshooting"`
 
 The block above resolves the data home, creates it if missing, and seeds `capabilities.yml` /
 `user-preferences.md` from this skill's examples the first time it runs. Read its output before

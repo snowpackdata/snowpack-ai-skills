@@ -23,7 +23,7 @@ isn't already reachable:
 
 ```bash
 SKILL_DIR=""
-for candidate in ~/.claude/skills/plain-style .claude/skills/plain-style; do
+for candidate in "${CLAUDE_PLUGIN_ROOT}" ~/.claude/skills/plain-style .claude/skills/plain-style; do
   if [ -f "$candidate/references/style-guide.md" ]; then
     SKILL_DIR="$candidate"
     break

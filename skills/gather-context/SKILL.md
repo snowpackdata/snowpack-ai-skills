@@ -26,7 +26,7 @@ installed. Resolve its path once, before step 2:
 
 ```bash
 SKILL_DIR=""
-for candidate in ~/.claude/skills/gather-context .claude/skills/gather-context; do
+for candidate in "${CLAUDE_PLUGIN_ROOT}" ~/.claude/skills/gather-context .claude/skills/gather-context; do
   if [ -f "$candidate/scripts/scan.py" ]; then
     SKILL_DIR="$candidate"
     break

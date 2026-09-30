@@ -54,7 +54,7 @@ name (meaning the most recent one, e.g. `friday`). `submit` alone also accepts a
 
 ## Bootstrap (runs automatically on every invocation)
 
-!`for c in "$HOME/.claude/skills/time-logger" ".claude/skills/time-logger" "skills/time-logger" "."; do if [ -f "$c/scripts/bootstrap.sh" ] && grep -q '^name: time-logger$' "$c/SKILL.md" 2>/dev/null; then bash "$c/scripts/bootstrap.sh" "$(cd "$c" && pwd -P)"; exit 0; fi; done; echo "skill_dir: NOT FOUND — subagents were not (re)installed; see Troubleshooting"`
+!`for c in "${CLAUDE_PLUGIN_ROOT}" "$HOME/.claude/skills/time-logger" ".claude/skills/time-logger" "skills/time-logger" "."; do if [ -f "$c/scripts/bootstrap.sh" ] && grep -q '^name: time-logger$' "$c/SKILL.md" 2>/dev/null; then bash "$c/scripts/bootstrap.sh" "$(cd "$c" && pwd -P)"; exit 0; fi; done; echo "skill_dir: NOT FOUND — subagents were not (re)installed; see Troubleshooting"`
 
 The block above ran `scripts/bootstrap.sh` before you read this. It: resolves the data home
 and creates its tree; migrates data once from the old fixed location (`~/repos/time_logs/`)
