@@ -1,6 +1,6 @@
 ---
 name: fetch-claude-sessions-day
-description: Scans Claude Code session transcripts for activity on a specific date and saves a summary to ~/.local/share/time-logger/raw/claude/YYYY-MM-DD.md, reusing cached per-session summaries when nothing changed. Invoked by `/time-logger refresh entries` with a target date.
+description: Scans coding-agent session transcripts (Claude Code and Codex, deduplicated) for activity on a specific date and saves a summary to ~/.local/share/time-logger/raw/claude/YYYY-MM-DD.md, reusing cached per-session summaries when nothing changed. Invoked by `/time-logger refresh entries` with a target date.
 tools: Read, Write, Bash
 model: sonnet
 color: purple
@@ -9,15 +9,20 @@ permissionMode: bypassPermissions
 
 > **Data home**: all dynamic data lives under `~/.local/share/time-logger/` — `raw/`, `time_logs/`, `capabilities.yml`, `user-preferences.md`, and `dashboard/{data,feedback,logs}/`. Any relative data path below (e.g. `raw/slack/...`, `time_logs/time_entries_*.md`, `dashboard/data/*.json`) resolves against that directory, NOT the repo. Override the location with `$TIME_LOGGER_DATA_HOME`. Code (the skill, its scripts, and the dashboard app) lives in the skill install and `<data home>/app/`, never in a project repo.
 
-You scan Claude Code JSONL session transcripts for activity on a target date and write a structured summary. The target date will be provided in your task prompt in YYYY-MM-DD format.
+You scan coding-agent JSONL session transcripts — Claude Code and/or Codex, whichever
+`capabilities.yml` enables — for activity on a target date and write a structured summary. Both
+providers feed this one file; the scanner deduplicates imported, forked, and copied history
+across them before you see anything, so every session it prints is distinct activity. The target date will be provided in your task prompt in YYYY-MM-DD format.
 
 ---
 
 ## Step 0 — Check capabilities
 
-Read `~/.local/share/time-logger/capabilities.yml`. If the file exists and `claude_sessions.enabled`
-is `false`, write `~/.local/share/time-logger/raw/claude/YYYY-MM-DD.md` containing
-`Claude sessions disabled in capabilities.yml — skipping.` and stop.
+Read `~/.local/share/time-logger/capabilities.yml`. If `claude_sessions.enabled` is `false`
+AND `codex_sessions.enabled` is not `true` (a missing `codex_sessions` key means disabled),
+write `~/.local/share/time-logger/raw/claude/YYYY-MM-DD.md` containing `Coding-agent sessions
+disabled in capabilities.yml — skipping.` and stop. Otherwise the scanner picks the enabled
+providers itself.
 
 ---
 
@@ -27,7 +32,7 @@ is `false`, write `~/.local/share/time-logger/raw/claude/YYYY-MM-DD.md` containi
 python3 ~/.local/share/time-logger/scripts/scan_sessions.py YYYY-MM-DD
 ```
 
-Replace `YYYY-MM-DD` with the target date. The script scans JSONL files under `~/.claude/projects/`, filters to lines timestamped on that date, extracts turn counts, first/last activity times (in PDT), and message excerpts — all of them for a session, not just the first several: a fixed small cap on excerpts was measured to systematically hide whatever happened after it, which is exactly where a long session's outcome usually is. There's a character-budget safety valve for a genuinely pathological session (excerpts spanning hundreds of KB), which keeps both the start and the end rather than only the start if it ever triggers — a normal day's sessions, even a long one, come in well under it. This full rescan runs every time, even when reusing a cached summary below — it's cheap and is what guarantees nothing is missed, including a session that resumes after being idle for days or one that spans midnight. Two things keep it cheap even on a machine with a lot of history:
+Replace `YYYY-MM-DD` with the target date. The script scans JSONL files under `~/.claude/projects/` and/or `$CODEX_HOME/sessions/` + `archived_sessions/` (default `~/.codex`), drops history one transcript copied from another (a Codex import of a Claude session, a fork, an archive copy), filters to lines timestamped on that date, extracts turn counts, first/last activity times (local time, DST-aware — PDT or PST as the date requires), and message excerpts — all of them for a session, not just the first several: a fixed small cap on excerpts was measured to systematically hide whatever happened after it, which is exactly where a long session's outcome usually is. There's a character-budget safety valve for a genuinely pathological session (excerpts spanning hundreds of KB), which keeps both the start and the end rather than only the start if it ever triggers — a normal day's sessions, even a long one, come in well under it. This full rescan runs every time, even when reusing a cached summary below — it's cheap and is what guarantees nothing is missed, including a session that resumes after being idle for days or one that spans midnight. Two things keep it cheap even on a machine with a lot of history:
 - It skips any file whose mtime predates the target day's local start — a transcript never
   written to on/after that day can't contain a line timestamped that day.
 - It skips every transcript under the one project directory that every headless
@@ -51,15 +56,20 @@ saving is in never seeing the excerpts again, not just in skipping a rewrite.
 
 ## Step 2 — Reuse or (re)write each session's summary
 
+Each block carries `provider=` (`claude`|`codex`) and `cache_key=`/`digest=`; a block that
+continues imported or forked history also has `continues_from=`, and one with ambiguous overlap
+has `unresolved_messages=`. The trailer's `STALE_BLOCK=` lines name blocks already in today's
+file that must be removed (Step 3).
+
 For each `=== SESSION ===` block from Step 1:
 
 - **`cached=yes`** — copy the block's `effort=` value and its `--- CACHED SUMMARY ---` text
   verbatim into Step 3's output. Do not re-derive or rephrase it, and there are no excerpts to
   read for this block.
 - **`cached=no`** — summarize fresh from this run's excerpts:
-  - **File path** — extract the repo name from the path (last path component before the `.jsonl` filename's parent folder, e.g. `-Users-alice-repos-billing-service` → `billing-service`)
+  - **Repo** — use the block's `repo=` value
   - **Turns** — the total turn count
-  - **First / Last** — already in PDT
+  - **First / Last** — already in local time
   - **Excerpts** — read ALL of them, in order, not just the first handful. A long session's
     excerpts aren't capped for a reason: the outcome, the decision, or a correction to something
     said earlier is just as likely to sit near the end as the start, and reading them in order
@@ -101,14 +111,14 @@ Count `cached=yes` vs `cached=no` blocks for Step 4's report (or use the scanner
 ## Step 2.5 — Write the updated cache
 
 Write `~/.local/share/time-logger/raw/claude/.cache/YYYY-MM-DD.json`, one entry per session
-found in this run, keyed by its `file=` path: `{"turns": ..., "last_iso": ..., "effort": ...,
-"summary": ...}`. For a `cached=yes` block, copy `turns=`, `last_iso=`, `effort=`, and the
-cached summary text straight from this run's scanner output — never reconstruct or reformat
-`last_iso`, since a value that doesn't match the scanner's own minute-precision string
-byte-for-byte will silently miss the cache next time. For a `cached=no` block, write the
-`turns=`/`last_iso=` this run just read plus the `effort`/summary you composed for it in
-Step 2. Drop any entry for a file no longer present today (rare, but keeps the cache from
-growing stale).
+found in this run, keyed by its `cache_key=`: `{"file": ..., "turns": ..., "last_iso": ...,
+"digest": ..., "effort": ..., "summary": ...}`. For a `cached=yes` block, copy every value
+straight from this run's scanner output; for a `cached=no` block, copy `file=`/`turns=`/
+`last_iso=`/`digest=` and add the `effort`/summary you composed. Never reconstruct a `digest`
+or `last_iso` — a value that doesn't match byte-for-byte silently misses the cache next time.
+Drop any entry not in this run's output. (The fan-out flow does this with
+`scan_sessions.py --record-cache` instead; that's preferred whenever you can write the
+summaries to a JSON file first.)
 
 ---
 
@@ -120,10 +130,11 @@ omitted summaries:
 
 ```
 ## Session: [repo name]
+**Source**: [Claude Code | Codex]
 **File**: [full path]
 **Turns on this date**: [N]
-**First activity**: [H:MM AM/PM PDT]
-**Last activity**: [H:MM AM/PM PDT]
+**First activity**: [H:MM AM/PM TZ]
+**Last activity**: [H:MM AM/PM TZ]
 **Effort**: [light / medium / high]
 
 [Your 2–4 sentence summary here. Must describe the actual work, not just the repo name.]
@@ -148,7 +159,7 @@ python3 ~/.local/share/time-logger/scripts/apply_session_blocks.py \
 Where the JSON is `{"header": "...", "operations": [...]}` (see the script's own usage comment
 for the exact shape):
 - **The file doesn't exist yet** (first run of the day): set `header` to
-  `# Claude Code Sessions — [Weekday], [Month Day], [Year]`, and give one `append` operation
+  `# Coding Agent Sessions — [Weekday], [Month Day], [Year]`, and give one `append` operation
   per session, in first-activity-ascending order — the script creates the file from `header`
   when the target path doesn't exist.
 - **The file already exists**:
@@ -162,9 +173,11 @@ for the exact shape):
     wrong block — being slightly out of chronological order is harmless, corrupting the file is
     not.
   - **`cached=yes` sessions** — no operation at all; they're already correct in the file as-is.
-  - If a session block exists in the file from a prior run but no longer appears in this run's
-    scanner output at all (rare), leave it — no operation for it either; never delete
-    retroactively.
+  - **Every `STALE_BLOCK=` path** — one `remove` operation (`anchor_file` = that path). Its
+    provider was disabled, or it turned out to duplicate another session, or it has no retained
+    activity left for the date; leaving it would count it twice or count disabled data.
+  - Any other block from a prior run that no longer appears in the scanner output (its file
+    vanished) — leave it; never delete retroactively on missing data.
 
 Every `block` you write must be in the exact format above, including the trailing `---`. If
 the script reports an error (an `anchor_file` it couldn't find — check for a typo against
@@ -177,10 +190,12 @@ by hand as a last resort, but don't abandon the batch approach over one bad anch
 ## Step 4 — Report
 
 ```
-Found N sessions for YYYY-MM-DD (H unchanged from cache, M re-summarized, A automation-filtered):
-  repo-name  — N turns — effort
+Found N sessions for YYYY-MM-DD (H unchanged from cache, M re-summarized, A automation-filtered, D duplicate messages dropped):
+  [source] repo-name  — N turns — effort
   ...
 ```
 
 `H`/`M` are the scanner's `CACHED_SESSIONS=`/`FRESH_SESSIONS=` counts, `A` is
-`FILTERED_AUTOMATION=`; omit the automation-filtered clause if it's 0.
+`FILTERED_AUTOMATION=`, `D` is `DUPLICATE_MESSAGES_DROPPED=`; omit a zero clause. If
+`UNRESOLVED_OVERLAPS=` is nonzero, add a line saying so and pointing to
+`scan_sessions.py YYYY-MM-DD --report`.

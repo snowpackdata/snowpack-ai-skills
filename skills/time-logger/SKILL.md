@@ -1,6 +1,6 @@
 ---
 name: time-logger
-description: Slash-command time logger. Run /time-logger setup, refresh entries [date], submit [date | from..to], status, morning, refresh [section], feedback, summary [focus] (standup is an alias), dashboard [build|install|start|open], or /time-logger followed by any free-form question about your time, sources, or dashboard state. Builds a daily context file from Slack, Google Calendar, Claude Code sessions, GitHub, and Granola, drafts time entries from it, reviews them on a local Morning Dashboard, and on request submits them wherever this machine's submit instructions point (Cronos, a synced folder, etc.).
+description: Slash-command time logger. Run /time-logger setup, refresh entries [date], submit [date | from..to], status, morning, refresh [section], feedback, summary [focus] (standup is an alias), dashboard [build|install|start|open], or /time-logger followed by any free-form question about your time, sources, or dashboard state. Builds a daily context file from Slack, Google Calendar, Claude Code and Codex sessions, GitHub, and Granola, drafts time entries from it, reviews them on a local Morning Dashboard, and on request submits them wherever this machine's submit instructions point (Cronos, a synced folder, etc.).
 summary: "/time-logger setup | refresh entries | submit | morning | summary — drafts daily entries from your tools, with a local review dashboard."
 owner: "@jarellano01"
 status: production
@@ -11,7 +11,8 @@ disable-model-invocation: true
 # time-logger
 
 Reconstructs a workday from wherever you actually did the work — Slack, Google Calendar,
-Claude Code sessions, GitHub, Granola — into draft time entries, lets you review them on a
+Claude Code and Codex sessions (deduplicated, so a session imported from one into the other
+counts once), GitHub, Granola — into draft time entries, lets you review them on a
 local Morning Dashboard, and optionally submits confirmed entries wherever this machine's
 submit instructions say — a billing system, a synced folder, anything.
 
@@ -62,6 +63,13 @@ if found; installs the six subagents into `~/.claude/agents/` (Claude Code can't
 inside a skill folder) and the session scanner into `<data home>/scripts/`; seeds
 `capabilities.yml` / `user-preferences.md` from the examples if missing; and syncs + builds the
 bundled dashboard into `<data home>/app/dashboard/` whenever its source changed.
+
+**Running from Codex (or any host that doesn't execute `!` blocks).** If no bootstrap output
+appears above, run it yourself first: `bash <skill_dir>/scripts/bootstrap.sh <skill_dir>`, where
+`<skill_dir>` is this file's folder (`~/.agents/skills/time-logger` for an `npx skills`
+install). Where a step says to spawn a named subagent, use the host's own worker mechanism if
+it has one; otherwise follow that agent's `.md` instructions inline. Every scanner, cache, and
+apply step is a plain script and runs the same in either host.
 
 Read the bootstrap output before dispatching. Use its `data_home:` and `skill_dir:` values
 wherever this file says `<data home>` or `<skill_dir>`. The `today's data:` line is the
@@ -211,6 +219,9 @@ standup", "that's client X", "never log the all-hands" — append it to
 - **`submit` stops on a missing tool** (e.g. the Cronos connector) — that check comes from
   your instructions file, not the skill. Connect the tool it names, or switch this machine to
   a different template such as `synced-folder.md`.
+- **Codex sessions missing** — check `integrations.codex_sessions.enabled: true` (absent means
+  off), then `python3 <data home>/scripts/scan_sessions.py <date> --report` to see what was
+  discovered, excluded, and deduplicated. The report never prints message text.
 - **Data still at `~/repos/time_logs/`** — the migration only runs when the data home has no
   `capabilities.yml` yet. Move the files by hand, or delete the data home's `capabilities.yml`
   and re-run.

@@ -44,7 +44,8 @@ Paths are relative to the data home (`~/.local/share/time-logger/`, or
    - **Fetch.** If the date is **today**, fetch every enabled source *now* — not only when the
      raw file is missing; today keeps evolving, so always ask. Spawn `fetch-slack-day`,
      `fetch-calendar-day`, `fetch-github-day`, `fetch-granola-day` for their respective enabled
-     sources in parallel; for **claude**, follow
+     sources in parallel; for **claude** (the unified coding-agent source: Claude Code and/or Codex, whichever
+     `claude_sessions` / `codex_sessions` enables), follow
      [`fetch-claude-sessions-fanout.md`](./fetch-claude-sessions-fanout.md) instead of spawning
      an agent (it does its own internal parallel fan-out, one subagent per fresh session — run
      it alongside the other sources' spawns, not blocking on them). This is cheap even run

@@ -8,6 +8,9 @@ settings:
   # Where all dynamic data lives: raw/, time_logs/, this file, user-preferences.md,
   # the built dashboard app (app/), and dashboard/{data,feedback,logs}.
   data_home: ~/.local/share/time-logger
+  # IANA zone used to decide which local day a session's activity belongs to. Blank = the
+  # system zone. Override per run with $TIME_LOGGER_TZ.
+  timezone: ""
 
 # Client-specific values. Everything that used to be hardcoded for one engagement lives here.
 client:
@@ -28,6 +31,12 @@ integrations:
   # Always available — reads Claude Code JSONL transcripts from ~/.claude/projects/ locally.
   claude_sessions:
     enabled: true
+
+  # Reads Codex JSONL transcripts from $CODEX_HOME/sessions/ (default ~/.codex) and
+  # archived_sessions/. Feeds the same raw/claude/ stream as claude_sessions; a Claude session
+  # imported into Codex is counted once. Missing = disabled.
+  codex_sessions:
+    enabled: false
 
   # Requires the Slack MCP connector in Claude Code.
   slack:

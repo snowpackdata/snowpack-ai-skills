@@ -98,12 +98,51 @@ appended to `user-preferences.md` in the data home so you never repeat them.
 | Integration | Requires |
 |---|---|
 | Claude Code sessions | Nothing — always on, reads `~/.claude/projects/` locally |
+| Codex sessions | Off by default. Set `integrations.codex_sessions.enabled: true`; reads `$CODEX_HOME/sessions/` and `archived_sessions/` (default `~/.codex`) locally |
 | GitHub | `gh` CLI installed and authenticated (`gh auth login`) |
 | Slack | Slack MCP connector in Claude Code + your Slack member ID |
 | Google Calendar | Google Calendar MCP connector in Claude Code |
 | Granola | Granola MCP connector in Claude Code |
 | Submit destination | Whatever your `submit-instructions.md` needs — e.g. the `snowpack-mcp` connector for Cronos, or a mounted sync folder |
 | Dashboard | Node 20+ (`node`, `npm`); launchd jobs are macOS-only |
+
+## Codex sessions
+
+Claude Code and Codex transcripts feed one stream, `raw/claude/YYYY-MM-DD.md`. Each block
+carries a `**Source**:` line. The folder name is historical; every consumer (combined file,
+freshness checks, `generate-time-entry`) already reads it, so nothing downstream had to
+learn a new source.
+
+**Imports are counted once.** Codex can import Claude Code sessions, so the same history can
+exist in two places. Before anything is summarized, the scanner normalizes both formats and
+deduplicates across them, with the Claude original first. A copied message matches by message
+id, or by role + text + timestamp within one second. A run of matches with different
+timestamps only counts if it's at least three substantial messages from both roles, in order.
+Single repeated prompts never merge two sessions. Weak overlaps are kept and reported as
+unresolved, never merged silently. A session continued in Codex keeps only its new turns; a
+fork keeps the shared part once and each branch separately. With Claude disabled, imported
+history stays in Codex on its original dates.
+
+```bash
+# Enable: in <data home>/capabilities.yml
+#   integrations:
+#     codex_sessions:
+#       enabled: true
+# Dry run for one date: counts, exclusions, duplicates, unresolved overlaps. No message text.
+python3 ~/.local/share/time-logger/scripts/scan_sessions.py 2026-10-08 --report
+# ...--all-history skips the mtime prefilter, to compare every transcript on disk.
+# Refresh one date for real:
+/time-logger refresh entries 2026-10-08
+```
+
+**Disable / roll back.** Set `codex_sessions.enabled: false` and re-run `refresh entries` for
+any date you refreshed with it on. The scanner reports those Codex blocks as stale, and the
+refresh removes them and drops their cache entries; other dates' files are untouched. To roll
+back the code, reinstall the previous skill version. The old scanner ignores the new cache
+keys and resummarizes once. Its raw files are compatible, since the only addition is the
+`**Source**:` line.
+
+Tests: `python3 -m unittest discover -s skills/time-logger/tests` (synthetic fixtures only).
 
 ## Safety notes
 
@@ -179,7 +218,7 @@ or `$TIME_LOGGER_DATA_HOME`. The skill folder is code only and is safe to replac
 | `raw/combined/time-log_YYYY-MM-DD_<slug>.md` | Combined per-day file: raw sections + Recommended Time Log Structure |
 | `time_logs/time_entries_YYYYMMDD.md` | Draft time entries per date (what the dashboard and `submit` read) |
 | `summaries/YYYY-MM-DD_<slug>.md` | Every progress summary produced by `summary`/`standup`, with frontmatter (title, focus, audience, range) — shown on the Summaries tab. `*_daily-digest.md` is the Overview digest; the newest one is displayed |
-| `scripts/scan_sessions.py` | Copied here by the bootstrap; used by the Claude-sessions agent |
+| `scripts/scan_sessions.py`, `scripts/session_sources.py` | Copied here by the bootstrap; the session scanner (Claude Code + Codex adapters, dedup) |
 | `app/dashboard/` | The built dashboard (synced + built from the skill's `dashboard/` folder) |
 | `dashboard/data/*.json` | Rendered store the UI reads |
 | `dashboard/feedback/pending.json` | Comments from the UI awaiting `/time-logger feedback` |

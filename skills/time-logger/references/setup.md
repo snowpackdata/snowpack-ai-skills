@@ -26,6 +26,16 @@ ls ~/.claude/projects/ 2>/dev/null | wc -l
 ```
 Available if count > 0.
 
+**Codex sessions** (local transcripts; respects `$CODEX_HOME`, default `~/.codex`):
+```bash
+find "${CODEX_HOME:-$HOME/.codex}/sessions" "${CODEX_HOME:-$HOME/.codex}/archived_sessions" -name '*.jsonl' 2>/dev/null | wc -l
+```
+Available if count > 0. Offer to enable it; when reconfiguring, change only
+`codex_sessions.enabled` and leave every other integration as it was. Tell the user both
+providers feed one sessions stream and that imported Claude history is counted once. Before
+the first refresh, suggest a dry run that prints counts and overlap evidence but no message
+text: `python3 <data home>/scripts/scan_sessions.py <date> --report`.
+
 **GitHub** (gh CLI):
 ```bash
 gh auth status 2>&1
@@ -48,6 +58,7 @@ Show a table like:
 Integration       Status       Notes
 ──────────────────────────────────────────
 claude_sessions   available    ~/.claude/projects/ found
+codex_sessions    available    58 transcripts under ~/.codex/
 slack             available    Slack MCP detected
 google_calendar   available    Google Calendar MCP detected
 github            available    authenticated as octocat

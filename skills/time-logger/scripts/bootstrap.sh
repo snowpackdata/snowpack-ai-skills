@@ -4,7 +4,7 @@
 # 1. Resolves the data home and creates its tree.
 # 2. Migrates data from the pre-data-home location (~/repos/time_logs) once, if found.
 # 3. Installs the bundled subagents into ~/.claude/agents/ (Claude Code can't discover them
-#    inside a skill folder) and copies the operational scripts (scan_sessions.py and friends,
+#    inside a skill folder) and copies the operational scripts (scan_sessions.py + session_sources.py and friends,
 #    update-todo.mjs) where they're expected.
 # 4. Seeds capabilities.yml / user-preferences.md from the examples if missing.
 # 5. Syncs + builds the dashboard into <data home>/app/dashboard when its source changed.
@@ -46,6 +46,7 @@ fi
 if [ -n "$SKILL_DIR" ] && [ -d "$SKILL_DIR/.claude/agents" ]; then
   cp "$SKILL_DIR"/.claude/agents/*.md "$AGENTS_DIR/"
   cp "$SKILL_DIR/scripts/scan_sessions.py" "$DATA_HOME/scripts/scan_sessions.py"
+  cp "$SKILL_DIR/scripts/session_sources.py" "$DATA_HOME/scripts/session_sources.py"
   cp "$SKILL_DIR/scripts/apply_session_blocks.py" "$DATA_HOME/scripts/apply_session_blocks.py"
   cp "$SKILL_DIR/scripts/entries-cli.mjs" "$DATA_HOME/scripts/entries-cli.mjs"
   cp "$SKILL_DIR/scripts/day_is_closed.py" "$DATA_HOME/scripts/day_is_closed.py"

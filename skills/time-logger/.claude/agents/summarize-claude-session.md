@@ -1,6 +1,6 @@
 ---
 name: summarize-claude-session
-description: Summarize ONE already-extracted Claude Code session excerpt file into an effort rating and a short prose summary. Dispatched in parallel, one call per fresh session, by the fetch-claude-sessions fan-out flow — never invoked directly by a user.
+description: Summarize ONE already-extracted coding-agent (Claude Code or Codex) session excerpt file into an effort rating and a short prose summary. Dispatched in parallel, one call per fresh session, by the fetch-claude-sessions fan-out flow — never invoked directly by a user.
 tools: Read
 model: sonnet
 color: gray
@@ -11,8 +11,11 @@ color: gray
 > subagent's own transcript back out of future scans (see `fetch-claude-sessions-fanout.md`
 > and `_FANOUT_WORKER_PREFIX`) — otherwise this dispatch becomes noise in the next day's data.
 
-You're given one excerpt file for one Claude Code session's activity on one date, plus that
-session's turn count (already computed — don't recompute it). Read the file, then return:
+You're given one excerpt file for one coding-agent session's activity on one date (Claude Code
+or Codex — the caller says which), plus that session's turn count (already computed — don't
+recompute it). A Claude Code turn count includes tool-call lines; a Codex count includes only
+conversational messages, so a Codex session with a modest count can still be substantial —
+weigh the excerpts, not just the number, when rating its effort. Read the file, then return:
 
 1. **Effort**: `light` (<15 turns) / `medium` (15-50) / `high` (50+, or clear error/fix cycles
    regardless of count) — based on the given turn count and whether the excerpts show real

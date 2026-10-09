@@ -57,7 +57,10 @@ ls ~/.local/share/time-logger/time_logs/time_entries_*.md 2>/dev/null | sort | t
 **How to use each source:**
 - **Calendar** — sets the fixed meeting anchors (exact times)
 - **Granola** — enriches meeting descriptions with actual content; prefer over bare calendar titles
-- **Claude sessions** — the primary signal for coding/technical work blocks; also note any
+- **Coding-agent sessions** (`raw/claude/` — Claude Code and Codex; each block's `**Source**:`
+  says which, and imported/forked history is already deduplicated so every block is distinct
+  activity; discount a block's span when it carries `**Unresolved overlap**:`) — the primary
+  signal for coding/technical work blocks; also note any
   artifacts published/updated in a session — artifact creation implies later review time by
   the user (see the artifact-review rule in Step 3)
 - **GitHub** — use to name specific repos, PRs, and commits within a Claude session entry; cross-reference commit messages with session summaries to write sharper descriptions

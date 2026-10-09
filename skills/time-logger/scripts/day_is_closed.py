@@ -34,10 +34,16 @@ def main():
         print("missing")
         return
 
-    local_tz = datetime.now().astimezone().tzinfo
-    day = datetime.strptime(target_date, "%Y-%m-%d").replace(tzinfo=local_tz)
-    day_end = day + timedelta(days=1)  # local midnight starting the next day
-    mtime = datetime.fromtimestamp(os.path.getmtime(path), tz=local_tz)
+    # The real IANA zone, not "now"'s fixed offset — across a DST change the two disagree by
+    # an hour on exactly where the target day ends.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        from session_sources import day_window, resolve_tz
+        _, day_end = day_window(target_date, resolve_tz())
+    except ImportError:  # older deployed copy without session_sources.py next to it
+        local_tz = datetime.now().astimezone().tzinfo
+        day_end = datetime.strptime(target_date, "%Y-%m-%d").replace(tzinfo=local_tz) + timedelta(days=1)
+    mtime = datetime.fromtimestamp(os.path.getmtime(path), tz=day_end.tzinfo)
 
     print("closed" if mtime >= day_end else "stale")
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Apply a batch of session-block changes to raw/claude/YYYY-MM-DD.md in one pass.
+Apply a batch of session-block changes to raw/claude/YYYY-MM-DD.md (the unified Claude Code +
+Codex sessions file) in one pass.
 
 fetch-claude-sessions-day used to issue one Edit tool call per changed or new session block —
 correct, but each Edit is its own tool-call round trip on top of the actual write, and a day
@@ -11,18 +12,19 @@ Usage: apply_session_blocks.py <target_file> <operations_json_file>
 
 <operations_json_file> is a JSON object:
 {
-  "header": "# Claude Code Sessions — Weekday, Month Day, Year",   // used only if target_file
+  "header": "# Coding Agent Sessions — Weekday, Month Day, Year",  // used only if target_file
                                                                     // doesn't exist yet
   "operations": [
     {"type": "replace", "anchor_file": "<the **File**: path already in the target file>",
      "block": "<full replacement block, '## Session: ...' through the trailing '---'>"},
     {"type": "insert_after", "anchor_file": "<the **File**: path of the preceding block>",
      "block": "<full new block>"},
-    {"type": "append", "block": "<full new block>"}
+    {"type": "append", "block": "<full new block>"},
+    {"type": "remove", "anchor_file": "<a **File**: path from the manifest's stale_blocks>"}
   ]
 }
 
-Operations are applied in the given order. "replace"/"insert_after" locate a block by its
+Operations are applied in the given order. "replace"/"insert_after"/"remove" locate a block by its
 "**File**: <path>" line; a block runs from its "## Session:" header through the next
 "## Session:" line or end of file. Exits 1 with a message on stderr if an anchor can't be
 found (never silently drops a change) or if any input is malformed.
@@ -64,6 +66,17 @@ def _normalize_spacing(content: str) -> str:
 def apply_operations(content: str, operations: list) -> str:
     for op in operations:
         kind = op.get("type")
+        if kind == "remove":
+            # A stale block (provider disabled, or now a deduplicated copy). Missing is fine —
+            # the goal state is "not in the file", which already holds.
+            try:
+                start, end = _find_block_span(content, op["anchor_file"])
+            except ValueError as e:
+                if "not found" in str(e):
+                    continue
+                raise
+            content = content[:start] + content[end:]
+            continue
         block = op["block"]
         if not block.endswith("\n"):
             block += "\n"

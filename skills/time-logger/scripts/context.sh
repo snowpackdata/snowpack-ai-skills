@@ -23,7 +23,7 @@ yq() { grep -A20 "^$1:" "$CAPS" 2>/dev/null | grep -m1 "^[[:space:]]*$2:" | sed 
 echo "data_home: $DATA_HOME"
 echo "now: $(date '+%Y-%m-%d %H:%M') ($(date +%A))"
 echo "org: $(yq client org)   dashboard: port $(yq dashboard port) launchd=$(yq dashboard launchd)"
-en=""; for k in claude_sessions slack google_calendar github granola; do
+en=""; for k in claude_sessions codex_sessions slack google_calendar github granola; do
   v=$(grep -A3 "^[[:space:]]*$k:" "$CAPS" 2>/dev/null | grep -m1 enabled | awk '{print $2}'); [ "$v" = "true" ] && en="$en $k"; done
 echo "enabled sources:${en:- none}"
 si=$(grep -A2 '^submit:' "$CAPS" 2>/dev/null | grep -m1 instructions | sed -E 's/^[^:]*:[[:space:]]*//; s/[[:space:]]+#.*$//'); si="${si/#\~/$HOME}"
@@ -42,7 +42,7 @@ sc=$(ls "$DATA_HOME"/summaries/*.md 2>/dev/null | wc -l | tr -d " "); sl=$(ls "$
 echo "summaries: $sc saved${sl:+, latest $(basename "$sl")}"
 echo
 echo "freshness — age of each file (- = not fetched / not drafted):"
-printf '  %-10s %-4s %-8s %-8s %-8s %-8s %-8s %-8s\n' date day claude slack calendar github granola DRAFT
+printf '  %-10s %-4s %-8s %-8s %-8s %-8s %-8s %-8s\n' date day sessions slack calendar github granola DRAFT
 for i in $(seq 0 $((DAYS-1))); do
   d=$(day_offset "$i"); dn=$(date -j -f %F "$d" +%a 2>/dev/null || date -d "$d" +%a)
   row=""
@@ -56,7 +56,7 @@ done
 echo
 echo "paths:"
 echo "  drafts        $DATA_HOME/time_logs/time_entries_YYYYMMDD.md   (one [client: Name] tag per entry; header has Hours/Clients)"
-echo "  raw sources   $DATA_HOME/raw/{claude,slack,calendar,github,granola}/YYYY-MM-DD.md"
+echo "  raw sources   $DATA_HOME/raw/{claude,slack,calendar,github,granola}/YYYY-MM-DD.md   (raw/claude = Claude Code + Codex sessions)"
 echo "  combined      $DATA_HOME/raw/combined/"
 echo "  summaries     $DATA_HOME/summaries/YYYY-MM-DD_<slug>.md   (frontmatter: title, focus, audience, format, range)"
 echo "  preferences   $PREFS   (Orgs, Clients, Corrections log)"

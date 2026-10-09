@@ -16,7 +16,7 @@ from pathlib import Path
 SOURCES = [
     ("slack", "Slack"),
     ("calendar", "Calendar"),
-    ("claude", "Claude Sessions"),
+    ("claude", "Coding Agent Sessions"),  # Claude Code + Codex, deduplicated
     ("github", "GitHub"),
     ("granola", "Granola Meeting Notes"),
 ]

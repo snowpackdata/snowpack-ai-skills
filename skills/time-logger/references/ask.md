@@ -43,7 +43,7 @@ Read only what the question needs:
 | Question about | Read |
 |---|---|
 | hours, what was done, per-client split | `time_logs/time_entries_YYYYMMDD.md` — header `**Hours**` / `**Clients**` lines, then `### ` entry headings with `[client: Name]` |
-| meetings, Slack, sessions, commits | `raw/{calendar,slack,claude,github,granola}/YYYY-MM-DD.md` |
+| meetings, Slack, sessions, commits | `raw/{calendar,slack,claude,github,granola}/YYYY-MM-DD.md` (`claude` = Claude Code + Codex sessions) |
 | which client / org something belongs to | Orgs and Clients sections of `user-preferences.md`; `client.org` in `capabilities.yml` |
 | what's stale, what's scheduled, server | the snapshot itself; `dashboard/logs/{refresh,morning}.log` for detail |
 | what the dashboard is showing | `dashboard/data/*.json` (`meta.json` for section timestamps) |

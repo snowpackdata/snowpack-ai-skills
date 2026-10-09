@@ -21,7 +21,7 @@ python3 <data home>/scripts/build_combined_file.py YYYY-MM-DD
 ```
 
 It writes `raw/combined/time-log_YYYY-MM-DD_<slug>.md`: one `##` section per fixed source
-(Slack, Calendar, Claude Sessions, GitHub, Granola Meeting Notes — always all five, `client.slug`
+(Slack, Calendar, Coding Agent Sessions, GitHub, Granola Meeting Notes — always all five, `client.slug`
 read straight from `capabilities.yml`), each holding that source's raw file verbatim or
 `(no data)` if it doesn't exist yet, followed by `## Recommended Time Log Structure` — one `- `
 bullet per `###` heading in `time_logs/time_entries_YYYYMMDD.md` (copied as-is, not
