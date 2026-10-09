@@ -385,6 +385,20 @@ function useHashTab() {
   return [tab, setTab];
 }
 
+// The Time entries page's selected day lives in the URL (?date=YYYY-MM-DD, before the #/tab
+// hash) so a reload or a pasted link reopens the same day instead of snapping back to the
+// latest one. replaceState, not pushState: clicking through days shouldn't fill Back history.
+function readDateParam() {
+  const v = new URLSearchParams(window.location.search).get('date') || '';
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(new Date(`${v}T12:00:00`).getTime()) ? v : null;
+}
+function writeDateParam(date) {
+  const url = new URL(window.location.href);
+  if (date) url.searchParams.set('date', date);
+  else url.searchParams.delete('date');
+  if (url.href !== window.location.href) window.history.replaceState(window.history.state, '', url);
+}
+
 // ---------- helpers ----------
 function ageLabel(iso) {
   if (!iso) return null;
@@ -1452,7 +1466,7 @@ function TimeEntriesPage({ pending, submit, remove }) {
   // null until the user actually navigates — until then, default to the most recent day with
   // data (same default the old index-based sidebar had, from `bounds` rather than needing the
   // whole year loaded), not necessarily today.
-  const [selectedDateOverride, setSelectedDateOverride] = useState(null);
+  const [selectedDateOverride, setSelectedDateOverride] = useState(readDateParam);
   const [weekStartOverride, setWeekStartOverride] = useState(null);
   const selectedDate = selectedDateOverride ?? bounds.latest ?? toISO(new Date());
   const weekStart = weekStartOverride ?? startOfWeek(selectedDate);
@@ -1463,6 +1477,7 @@ function TimeEntriesPage({ pending, submit, remove }) {
   // again the moment the page reloads. Sync with the server's real status for whichever day is
   // actually on screen, same instinct as useJobs' mount-time refresh() for the sidebar jobs.
   useEffect(() => { pollDayRefresh(selectedDate); }, [selectedDate, pollDayRefresh]);
+  useEffect(() => { writeDateParam(selectedDateOverride); }, [selectedDateOverride]);
 
   // Load a window around the visible week — enough either side that Previous/Next feels
   // instant without paging on every single day — instead of the whole year on every request.
